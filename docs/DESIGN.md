@@ -92,8 +92,9 @@ planted bug or not.
 
 - Counts, not percentages: "7 / 10" shows the sample size; one block per task
   and run makes it visible at a glance.
-- "Too close to call" when the gap between the top two is under about 30 % of
-  the tasks (at least 2), which is what a handful of tasks can separate.
+- "Too close to call" when the top two differ by less than two standard
+  errors of the difference between two proportions, or by fewer than two
+  tasks: with a handful of tasks most gaps are noise, with fifty they are not.
 - The judging method, judge model, runs per setting and the harness ("via
   Codex CLI") are on the card: the result is the model in that harness.
 - Cost: Claude Code reports cost; for Codex it is estimated from tokens at list

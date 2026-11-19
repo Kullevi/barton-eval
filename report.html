@@ -297,7 +297,7 @@ function drawBlocks(x, T, segs, colour, X, Y, w, h) {
 // Rows of one panel. Large rows carry the effort, harness, time and cost on a second line.
 function drawRows(x, T, s, rows, box, large) {
   if (!rows.length) return;
-  const minH = (large ? 36 : 26) * s, maxH = (large ? 64 : 40) * s;
+  const minH = (large ? 36 : 26) * s, maxH = (large ? 76 : 40) * s;
   let shown = rows, more = 0;
   if (box.h / rows.length < minH) {
     const k = Math.max(1, Math.floor(box.h / minH) - 1);
@@ -367,7 +367,7 @@ function footerStats(P) {
 
 // Narrow windows stack the panels; this is the height they need at width w.
 function stackedHeight(w, P) {
-  const s = Math.min(1, w / 640), pad = 16 * s, gap = 16 * s;
+  const s = Math.min(1, Math.max(.75, w / 520)), pad = 16 * s, gap = 16 * s;
   let h = pad + 28 * s + 104 * s;
   for (const p of [P.main, ...P.side]) h += 76 * s + p.rows.length * (p === P.main ? 56 : 34) * s + gap;
   return h + Math.ceil(footerStats(P).length / 2) * 48 * s + 72 * s + pad;
@@ -379,7 +379,7 @@ function drawDashboard(c, w, h, T, stacked) {
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.textBaseline = "alphabetic";
   const P = panelsOf();
   x.fillStyle = T.page; x.fillRect(0, 0, w, h);
-  const s = stacked ? Math.min(1, w / 640) : Math.max(.55, Math.min(w / 1200, h / 630, 2));
+  const s = stacked ? Math.min(1, Math.max(.75, w / 520)) : Math.max(.55, Math.min(w / 1200, h / 630, 2));
   const pad = (stacked ? 16 : 32) * s, gap = (stacked ? 16 : 24) * s;
 
   // Brand row.

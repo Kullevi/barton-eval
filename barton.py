@@ -509,9 +509,12 @@ def cmd_plant(args) -> None:
             break
         # With the project's tests: keep only a bug they catch, so it is surely a real bug.
         task["plant"]["check"] = args.check
+        env = dict(kv.split("=", 1) for kv in args.env or [])
+        if env:
+            task["plant"]["env"] = env
         name = f"p-{args.id}"
         folder = make_folder(b, base, name, review_files(b, task), "change")
-        code, so, se, _, to = run_cmd(args.check, folder, CHECK_TIMEOUT, shell=True)
+        code, so, se, _, to = run_cmd(args.check, folder, CHECK_TIMEOUT, shell=True, env=env)
         remove_tree(folder)
         tried.append({"line": line_no, "after": new_text.strip(), "tests_failed": code != 0})
         if code != 0:
@@ -526,7 +529,7 @@ def cmd_plant(args) -> None:
 
 def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
     files: dict[str, bytes | None] = {}
-    for rel in git(b.repo, "diff", "--name-only", task["base"], task["reference"]).splitlines():
+    for rel in git(b.repo, "diff", "--name-only", "--no-renames", task["base"], task["reference"]).splitlines():
         p = sp_run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
                            capture_output=True, stdin=subprocess.DEVNULL)
         files[rel] = p.stdout if p.returncode == 0 else None
@@ -952,7 +955,7 @@ def cmd_status(args) -> None:
         s["seconds"] += r.get("seconds") or 0
         s["cost_usd"] += r.get("cost_usd") or 0
     out({"tasks": [{"id": t["id"], "kind": t["kind"], "source": t.get("source"),
-                    "check": bool(t.get("check")), "valid": (t.get("validated") or {}).get("ok")}
+                    "check": bool(t.get("check") or (t.get("plant") or {}).get("check")), "valid": (t.get("validated") or {}).get("ok")}
                    for t in cfg.get("tasks", [])],
          "runs": len(rows), "by_model": summary})
 
@@ -1025,6 +1028,8 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--seed", type=int)
     sp.add_argument("--prompt")
     sp.add_argument("--check", help="test command; keep only a planted bug it catches")
+    sp.add_argument("--env", action="append", metavar="NAME=VALUE",
+                    help="environment for --check, such as PYTHONPATH=src (repeatable)")
     sp.add_argument("--tries", type=int, default=12)
     sp = p("run", cmd_run, "run one model on one task and record it")
     sp.add_argument("task")

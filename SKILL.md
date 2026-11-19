@@ -113,7 +113,8 @@ Rules for a good task:
   touching many files), write realistic tasks from the current code instead
   (`"base": "HEAD"`, no `reference`, no `check`), judged blind.
 
-**Review tasks**: `barton plant <id> <sha> --check "<test command>"` takes a
+**Review tasks**: `barton plant <id> <sha> --check "<test command>" [--env NAME=VALUE]`
+(the same environment as the coding checks, such as `--env PYTHONPATH=src`) takes a
 real commit and plants one mechanical bug in its new code (a flipped
 condition, an off-by-one, a swapped `and`/`or`). With `--check` it keeps only a
 bug that makes the project's tests fail, so it is surely a real bug; small

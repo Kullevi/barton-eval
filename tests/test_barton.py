@@ -112,6 +112,19 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(g["outcome"], "found")
         self.assertEqual(g["other_findings"], 1)
 
+    def test_review_folder_drops_the_old_path_of_a_renamed_file(self):
+        sh(self.repo, "mv", "calc.py", "mathx.py")
+        (self.repo / "mathx.py").write_text((self.repo / "mathx.py").read_text() + "\n\ndef pos(x):\n    if x > 0:\n        return x\n    return 0\n")
+        sh(self.repo, "commit", "-q", "-am", "Rename calc and add pos")
+        sha = sh(self.repo, "rev-parse", "HEAD").strip()
+        d = call("plant", "--repo", str(self.repo), "r2", sha, "--seed", "1")
+        b = barton.Barton(self.repo)
+        task = b.task("r2")
+        folder = barton.make_folder(b, task["base"], "r2", barton.review_files(b, task), "change")
+        self.assertTrue((folder / "mathx.py").exists())
+        self.assertFalse((folder / "calc.py").exists())
+        self.assertEqual(d["file"], "mathx.py")
+
     def test_review_without_file_goes_to_the_judge(self):
         task = {"plant": {"file": "a.py", "line": 3}}
         tmp = Path(self.tmp.name)

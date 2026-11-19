@@ -2,8 +2,9 @@
 <!-- Barton-eval results page: `barton report` fills in the data below and opens
      this file. No server and no libraries. Each card is drawn on a canvas at the
      1200x630 link-preview size, so it can be copied or saved as a PNG and shared.
-     Visual system shared with Kuakgan: tokens, type scale 12/14/16/20/28/48,
-     8 px grid, series palette. -->
+     Visual system shared with Kuakgan (its dashboard.html :root): tokens, type
+     scale 12/14/16/20/28/48, 8 px grid, series palette. On a card the 56 px
+     margin is Kuakgan's 32 px frame padding plus its 24 px card padding. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -13,13 +14,13 @@
 <style>
 :root {
   --bg:#f6f7f9; --surface:#ffffff; --border:#e6e8ec; --text:#111418; --muted:#5d6673;
-  --accent:#0f9d6b; --track:#edf0f3; --warn:#c27a12; --err:#d0453b;
+  --accent:#0f9d6b; --track:#eef0f3; --faint:#8b929d; --warn:#c27a12; --err:#d0453b;
   --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#222932; }
+  :root:not([data-theme="light"]) { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#1e242c; --faint:#677180; --warn:#e0a043; --err:#f0675c; }
 }
-:root[data-theme="dark"] { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#222932; }
+:root[data-theme="dark"] { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#1e242c; --faint:#677180; --warn:#e0a043; --err:#f0675c; }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 var(--font); }
 main { max-width:1048px; margin:0 auto; padding:48px 16px 64px; }
@@ -30,21 +31,21 @@ header { display:flex; gap:16px 24px; align-items:center; flex-wrap:wrap; margin
 .sub { color:var(--muted); font-size:14px; margin:0 0 32px 44px; }
 .tools { display:flex; gap:16px; align-items:center; flex-wrap:wrap; font-size:14px; color:var(--muted); }
 .tools input { font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 10px; width:176px; }
-.seg { display:inline-flex; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:2px; }
+.seg { display:inline-flex; background:var(--track); border-radius:8px; padding:2px; }
 .seg button { font:inherit; font-weight:600; font-size:14px; border:0; background:none; color:var(--muted); padding:4px 12px; border-radius:6px; cursor:pointer; }
-.seg button[aria-pressed="true"] { background:var(--track); color:var(--text); }
+.seg button[aria-pressed="true"] { background:var(--surface); color:var(--text); }
 .cards { display:grid; gap:32px; }
 .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
 .card canvas { width:100%; height:auto; display:block; }
 .actions { display:flex; gap:8px; padding:16px 24px; border-top:1px solid var(--border); flex-wrap:wrap; }
 button.act { font:inherit; font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
 button.act.primary { background:var(--text); color:var(--surface); border-color:var(--text); }
-h2 { font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:48px 0 16px; }
+h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:48px 0 16px; }
 .table { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow-x:auto; }
 table { width:100%; border-collapse:collapse; font-size:14px; }
 th, td { text-align:left; padding:12px 16px; border-bottom:1px solid var(--border); vertical-align:top; }
 tr:last-child td { border-bottom:0; }
-th { color:var(--muted); font-weight:650; font-size:12px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
+th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
 td small { display:block; color:var(--muted); }
 .ok { color:var(--accent); font-weight:650; } .no { color:var(--err); font-weight:650; } .wait { color:var(--muted); }
 .empty { padding:48px 24px; text-align:center; color:var(--muted); background:var(--surface); border:1px dashed var(--border); border-radius:16px; }
@@ -80,9 +81,9 @@ footer a { color:var(--text); font-weight:600; text-decoration:none; }
 <script>
 const DATA = /*BARTON_DATA*/null;
 const THEMES = {
-  light: { bg: "#ffffff", text: "#111418", muted: "#5d6673", border: "#e6e8ec", track: "#edf0f3", tie: "#c5cbd3", accent: "#0f9d6b",
+  light: { bg: "#ffffff", text: "#111418", muted: "#5d6673", border: "#e6e8ec", track: "#eef0f3", tie: "#c5cbd3", accent: "#0f9d6b",
     series: ["#0f9d6b", "#3b6fe0", "#e0882b", "#8a5cf0", "#e0457b", "#1aa6b8", "#9aa3ad"] },
-  dark: { bg: "#151a20", text: "#eef1f4", muted: "#8b95a3", border: "#252c35", track: "#222932", tie: "#46505c", accent: "#2fd08b",
+  dark: { bg: "#151a20", text: "#eef1f4", muted: "#8b95a3", border: "#252c35", track: "#1e242c", tie: "#46505c", accent: "#2fd08b",
     series: ["#2fd08b", "#6b93f0", "#f0a352", "#a585f5", "#f06a95", "#3cc3d4", "#b4bcc5"] },
 };
 const FONT = '"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif';
@@ -264,10 +265,10 @@ function ellipsize(x, text, maxW) {
   return text + "…";
 }
 
-// Largest size from the scale (48, 40, 36, 28) that fits; past that, ellipsis.
+// Largest size from the scale (48, 28) that fits, via 40 and 36 in between; past that, ellipsis.
 function fitHeadline(x, text, maxW) {
   for (const s of [48, 40, 36, 28]) {
-    setFont(x, s, 650, s >= 40 ? -0.5 : 0);
+    setFont(x, s, 650, -0.02 * s);
     if (x.measureText(text).width <= maxW) return text;
   }
   return ellipsize(x, text, maxW);
@@ -301,7 +302,7 @@ function drawCard(spec, T) {
   x.fillText(ellipsize(x, handle ? `${handle}'s codebase` : "My own codebase", 480), W - M, 62); x.textAlign = "left";
 
   // Kicker, headline result and one supporting sentence.
-  setFont(x, 12, 650, 0.8); x.fillStyle = T.muted; x.fillText(spec.kicker.toUpperCase(), M, 128);
+  setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText(spec.kicker.toUpperCase(), M, 128);
   x.fillStyle = T.text; x.fillText(fitHeadline(x, spec.headline, W - 2 * M), M, 180);
   setFont(x, 20, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, spec.sub, W - 2 * M), M, 216);
 
@@ -360,13 +361,13 @@ function drawCard(spec, T) {
   const credit = "github.com/Kullevi/barton-eval";
   setFont(x, 14, 400); const creditW = x.measureText(credit).width;
   x.textAlign = "right";
-  setFont(x, 12, 650, 0.8); x.fillStyle = T.muted; x.fillText("RUN WITH BARTON-EVAL · BY KULLEVI", W - M, 568);
+  setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText("RUN WITH BARTON-EVAL · BY KULLEVI", W - M, 568);
   setFont(x, 14, 400); x.fillStyle = T.muted; x.fillText(credit, W - M, 592);
   x.textAlign = "left";
   let sx = M; const limit = W - M - Math.max(creditW, 280) - 32;
   for (const s of spec.stats) {
     setFont(x, 16, 650); const vw = x.measureText(s.value).width;
-    setFont(x, 12, 650, 0.8); const lw = x.measureText(s.label.toUpperCase()).width;
+    setFont(x, 12, 600, 0.72); const lw = x.measureText(s.label.toUpperCase()).width;
     const room = limit - sx;
     if (room < 96) break;
     const w = Math.min(Math.max(vw, lw), room);

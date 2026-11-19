@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- barton-eval results page: `barton report` fills in the data below and opens
+<!-- Barton-eval results page: `barton report` fills in the data below and opens
      this file. No server and no libraries; cards are drawn on canvas so they
      can be saved or copied as PNG images. -->
 <html lang="en">
@@ -7,6 +7,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Barton results</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cstyle%3Eg %7B color: #0f9d6b %7D %40media (prefers-color-scheme: dark) %7B g %7B color: #2fd08b %7D %7D%3C/style%3E%3Cg fill='currentColor'%3E%3Cpath d='M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z' transform='translate(50 59) scale(.62) translate(-50 -52)'/%3E%3Cpath d='M37,89 H11 V45 L50,9 L89,45 V89 H63' fill='none' stroke='currentColor' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root { --bg:#f6f5f1; --fg:#17171a; --muted:#6b6b72; --card:#fff; --line:#e4e2dc; --accent:#17171a; }
 @media (prefers-color-scheme: dark) {
@@ -48,7 +49,7 @@ footer a { color:inherit; }
   <div class="cards" id="cards"></div>
   <h2>Task by task</h2>
   <div class="scroll"><table id="tasks"></table></div>
-  <footer>Made with <a href="https://github.com/Kullevi/barton-eval">barton-eval</a>, open source by
+  <footer>Made with <a href="https://github.com/Kullevi/barton-eval">Barton-eval</a>, open source by
     <a href="https://kullevi.com">Kullevi</a>. Results stay on your computer unless you share a card.</footer>
 </main>
 <script>
@@ -95,14 +96,14 @@ function drawCard(spec) {
   const W = 1200, pad = 56, labelW = 150, valueW = 230, rowH = 46, gap = 10, groupGap = 30;
   let h = 150;
   spec.groups.forEach(g => { h += 46 + g.list.length * (rowH + gap) + groupGap; });
-  const footLines = spec.foot.length;
-  h += 40 + footLines * 30 + 70;
+  const font = (w, s) => `${w} ${s}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  const foot = wrapLines(spec.foot, font(400, 21), W - 2 * pad);
+  h += 40 + foot.length * 30 + 24;
   const c = document.createElement("canvas");
   c.width = W * 2; c.height = h * 2;
   const x = c.getContext("2d");
   x.scale(2, 2);
   x.fillStyle = "#fbfbf8"; x.fillRect(0, 0, W, h);
-  const font = (w, s) => `${w} ${s}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
   x.fillStyle = "#17171a"; x.font = font(650, 40); x.fillText(spec.title, pad, 78);
   x.fillStyle = "#5b5b63"; x.font = font(400, 24); x.fillText(spec.subtitle, pad, 116);
   let y = 170;
@@ -136,16 +137,31 @@ function drawCard(spec) {
   }
   x.fillStyle = "#7a7a82"; x.font = font(400, 21);
   y += 6;
-  for (const line of spec.foot) { x.fillText(line, pad, y); y += 30; }
+  for (const line of foot) { x.fillText(line, pad, y); y += 30; }
   y += 18;
   x.fillStyle = "#e4e2dc"; x.fillRect(pad, y - 22, W - 2 * pad, 1);
   x.fillStyle = "#17171a"; x.font = font(600, 22);
   const handle = $("handle").value.trim();
   x.fillText(handle ? `${handle}'s codebase` : "On my own codebase", pad, y + 14);
   x.fillStyle = "#7a7a82"; x.font = font(400, 21);
-  const credit = "Run with barton-eval · open source by Kullevi · github.com/Kullevi/barton-eval";
+  const credit = "Run with Barton-eval · open source by Kullevi · github.com/Kullevi/barton-eval";
   x.fillText(credit, W - pad - x.measureText(credit).width, y + 14);
   return c;
+}
+
+// Word-wrap the footnote lines to the card width.
+function wrapLines(lines, font, width) {
+  const m = document.createElement("canvas").getContext("2d"); m.font = font;
+  const out = [];
+  for (const line of lines) {
+    let cur = "";
+    for (const word of line.split(" ")) {
+      const next = cur ? cur + " " + word : word;
+      if (cur && m.measureText(next).width > width) { out.push(cur); cur = word; } else cur = next;
+    }
+    if (cur) out.push(cur);
+  }
+  return out;
 }
 
 function roundRect(x, X, Y, w, h, r) {
@@ -246,7 +262,7 @@ function cardSpecs() {
 function render() {
   if (!DATA) { $("cards").innerHTML = '<div class="empty">No data. Run <code>barton report</code> to build this page.</div>'; return; }
   $("title").textContent = `Barton results · ${DATA.repo}`;
-  $("sub").textContent = `${(DATA.tasks || []).length} tasks · built ${new Date(DATA.generated).toLocaleString()} · barton-eval ${DATA.barton}`;
+  $("sub").textContent = `${(DATA.tasks || []).length} tasks · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
   const specs = cardSpecs();
   const box = $("cards"); box.innerHTML = "";
   if (!specs.length) box.innerHTML = '<div class="empty">No scored runs yet. Ask your agent to continue the Barton run.</div>';

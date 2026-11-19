@@ -1,6 +1,6 @@
 ---
 name: barton
-description: Test a new AI model on the user's own codebase with barton-eval, compare it with models tested before, and make shareable result cards. Use when the user asks to test, evaluate, benchmark or compare a model (for example "test GPT-6.2 Sol on my repo", "run barton", "continue barton", "how does the new Claude do on my code").
+description: Test a new AI model on the user's own codebase with Barton-eval, compare it with models tested before, and make shareable result cards. Use when the user asks to test, evaluate, benchmark or compare a model (for example "test GPT-6.2 Sol on my repo", "run barton", "continue barton", "how does the new Claude do on my code").
 ---
 
 # Barton: test a model on the user's own code

@@ -99,7 +99,7 @@ planted bug or not.
 - Cost: Claude Code reports cost; for Codex it is estimated from tokens at list
   prices (`prices.json`) and marked "est.". On a subscription the user may not
   pay per run.
-- Credit line: "Run with barton-eval · open source by Kullevi", with the user's
+- Credit line: "Run with Barton-eval · open source by Kullevi", with the user's
   own name as the author of the result, so it reads as their finding, not
   Kullevi's claim.
 

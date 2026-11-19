@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""barton-eval: test a new AI model on your own codebase and share the result.
+"""Barton-eval: test a new AI model on your own codebase and share the result.
 
 A Claude Code or Codex session is the test leader (see SKILL.md). This script
 does the mechanical parts it asks for: checking the CLIs, mining task

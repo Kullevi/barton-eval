@@ -1,37 +1,63 @@
-# <img src="logo.svg" width="40" align="top" alt=""> barton-eval
+# <img src="logo.svg" width="40" align="top" alt=""> Barton-eval
 
 **Test a new AI model on your own code, the day it comes out.** Barton takes
-real changes from your project's own history, has the new model redo them in a
-safe copy of your code, checks the work with your own tests, and compares it
-with the models you use today. The result is a set of cards you can share:
-how many of your tasks each model solved, how many planted bugs it caught in
-code review, how long it took and what it cost.
+real changes from your project's history, has the new model redo them in a
+clean copy of your code, checks the work with your own tests, and compares it
+with the models you use today. You get cards you can share: how many of your
+tasks each model solved, whose solution was better when both worked, how many
+planted bugs it caught in code review, and what it took in time and money.
 
-Big benchmarks tell you how a model does on other people's code. Barton tells
-you how it does on **yours**.
+![The Barton results page: the coding tasks card from a real run on the open-source tomli library](docs/report.png)
 
 **To get started, give the link to this page to Claude or Codex and ask it to
 set up Barton for you.** Then say something like *"test GPT-6.2 Sol on my
-project"*. Your assistant does the rest and tells you when it needs a click
+project"*. Your assistant does the rest, and tells you when it needs a click
 from you.
 
-Built by the team behind [Kullevi](https://kullevi.com). The design choices are
-in [docs/DESIGN.md](docs/DESIGN.md).
+[![Tests](https://github.com/Kullevi/barton-eval/actions/workflows/test.yml/badge.svg)](https://github.com/Kullevi/barton-eval/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0f9d6b.svg)](LICENSE)
+
+Every change is tested automatically on Linux, macOS and Windows. What Barton
+sets out to do is in [docs/GOALS.md](docs/GOALS.md), and the choices behind it
+in [docs/DESIGN.md](docs/DESIGN.md). Built by the team behind
+[Kullevi](https://kullevi.com), which builds AI that runs your company for you.
+
+## Why we built it
+
+A new model comes out every few weeks, each with a chart showing it beats the
+last one. Those charts measure other people's code. What you want to know is
+simpler: is it better **on my project**, at the way I work, and is it worth
+switching?
+
+At [Kullevi](https://kullevi.com) we build our product with many Claude Code
+and Codex sessions working in parallel, so we ask that question often. We
+answered it the slow way, by trying a new model for a few days and arguing
+about how it felt. Barton is the quick way: an hour or so on your own history,
+judged by your own tests, with the result kept so the next model is compared
+on exactly the same tasks.
 
 ## What you get
 
-- **Coding**: tasks taken from your own commits. The model gets the task in
-  plain words, works in a fresh copy of your code at that point in history, and
-  your own tests decide whether it worked (they are hidden from the model while
-  it works).
+- **Coding tasks** taken from your own commits. The model gets the task in
+  plain words, works in a fresh copy of your code as it was before that
+  commit, and your own tests decide whether it worked. The tests are hidden
+  from the model while it works.
+- **Better solution when both passed.** Tests only say pass or fail. When two
+  models both solved a task, a blind AI judge compares the two solutions, in
+  both orders, and a win counts only when both orders agree.
 - **Code review**: a real recent change from your project with one bug planted
-  in it. Did the model find it, and how many false alarms did it raise?
-- **Cards** ready to paste into a post: solved tasks, time and cost per model
-  and thinking level, with the sample size and how it was judged printed on the
-  card. Small samples are shown honestly: when two models are within noise, the
-  card says "too close to call".
-- **History**: results are kept in your project (`.barton/`, never committed),
-  so a model you test next month is compared on exactly the same tasks.
+  in it. Did the model find it?
+- **Time and cost** per model and thinking level.
+- **Cards** ready to paste into a post, with your name on them if you like.
+  Each card prints the number of tasks, how they were judged and by whom, and
+  says so plainly when the models were too close to call or the tasks too easy.
+- **History.** Results stay in your project (`.barton/`, never committed), so a
+  model you test next month is compared on exactly the same tasks.
+
+<img src="docs/card.png" width="600" alt="A share card: which model wrote the better solution when both passed, from the same run">
+
+*A share card from the same run. 4 comparisons is a small sample, and the card
+says how it was judged.*
 
 ## Who does what
 
@@ -41,7 +67,88 @@ in [docs/DESIGN.md](docs/DESIGN.md).
 | **Your assistant** (Claude Code or Codex) | Sets Barton up, picks good tasks, writes them in plain words, runs the models, judges what tests cannot, and explains the result. |
 | **You** | Say which model to test. Click **Authorize** in the browser if a login is needed. Share a card if you like it. |
 
-Your code and results never leave your computer. Barton sends nothing anywhere.
+## What it does not do
+
+- **It is not a general benchmark.** A run is a handful of tasks from one
+  codebase. It tells you how models do on *your* code; it does not rank models
+  for everyone, and the cards say so.
+- **It sends nothing anywhere.** No accounts, no server, no telemetry. Your
+  code and results stay on your computer, except what the models themselves
+  see while they work through their own CLIs. A result leaves your computer
+  only when you share a card.
+- **It never touches your work.** Your files, branches and history are left
+  alone. Barton works in its own folders and keeps its records in `.barton/`,
+  which it hides from git for you.
+- **It does not pick a winner for you on thin evidence.** Small differences
+  are shown as "too close to call", and a run where every model solved
+  everything says the tasks were too easy.
+
+## How judging works, and its limits
+
+- **Coding tasks** are decided by the tests the original commit added or
+  changed. A task is used only if those tests fail before the change and pass
+  twice with it. When a project has no tests for a change, your assistant
+  writes a small check from the original change (validated the same way), or,
+  when the code cannot run at all, a blind AI judge decides. The card names
+  the method.
+- **Planted bugs** are mechanical changes (a flipped comparison, an
+  off-by-one, a swapped `and`/`or`) in real code, kept only when your tests
+  catch them, so they are certainly bugs. The answer key is fixed, so scores do
+  not drift as more models are tested.
+- **The judge is blind.** Model names and folder paths are removed, solutions
+  are labelled A, B, C in random order, and each comparison goes to a fresh
+  judge that sees only that one. Your assistant prefers the other vendor's
+  model as judge.
+- **The limits.** A judge is still a model and can be wrong; a handful of tasks
+  is a small sample; a public repository may have been in a model's training
+  data (the card says so); and the result is the model *in that harness*
+  (Claude Code or Codex CLI), which the card also says. Running more attempts
+  per setting gives a fairer picture.
+
+Details and the research behind these choices are in
+[docs/DESIGN.md](docs/DESIGN.md).
+
+## Time and cost
+
+Each task runs the real model through its own CLI, so a run uses your Claude or
+ChatGPT plan, or API credit, like any other session. In our trial on the
+[tomli](https://github.com/hukkin/tomli) library, four coding tasks took about
+four minutes and about $0.34 at list API prices per model, at low effort.
+Larger tasks, higher thinking levels and more attempts cost more. Your
+assistant gives a rough figure before it starts, and the cards show the
+actual cost: as reported by Claude Code, and estimated from tokens for Codex
+(marked "est.", from `prices.json`). On a subscription you may not pay per run
+at all.
+
+## Works on
+
+Windows 10/11, macOS and Linux, with Python 3.9 or newer and Git. To test
+Anthropic models you need [Claude Code](https://claude.com/claude-code); to
+test OpenAI models, the [Codex CLI](https://github.com/openai/codex).
+Your assistant installs what is missing. On Windows, Barton runs every
+program without a console window, so nothing flashes up while you work.
+
+## About Kullevi, the team behind Barton
+
+Barton comes out of our daily work at [Kullevi](https://kullevi.com), where we
+build AI that runs companies. This is what we are working towards.
+
+If you build with AI, you have watched it happen: you describe what you want,
+and working software appears. We are convinced that companies are next. The
+models can already do most of the thinking a business needs. What they lacked
+was everything around them: memory, tools, the authority to act and the stamina
+to keep going. That gap is closing fast.
+
+So picture starting a company the way you start a project today. You decide
+what it should achieve and where its limits are. It sells, delivers, invoices,
+keeps its books and looks after its customers on its own, around the clock.
+You would own the company without having to run it, and you would not need to
+know bookkeeping, tax or contracts to begin. The first companies of this kind
+already exist. We believe they will be running at a profit before 2027 is over,
+and that by 2035 most new companies will be run by AI.
+
+That is the world we are building for at Kullevi, and Barton is a small piece
+of how we work towards it. **[Join the waitlist at kullevi.com](https://kullevi.com).**
 
 ---
 
@@ -49,8 +156,12 @@ Your code and results never leave your computer. Barton sends nothing anywhere.
 
 You are setting this up for a user who may have little experience with
 terminals or software development. Do every step yourself. The user should not
-have to type commands; when something needs them (a click in the browser or a
-system dialog), say exactly what they will see and what to click, and wait.
+have to type commands or copy codes; when something needs them (a click in the
+browser or a system dialog), say exactly what they will see and what to click,
+and wait.
+
+Write commands for the shell you actually use. On Windows, `~` does not work
+everywhere; use full paths such as `C:/Users/NAME/barton-eval`.
 
 ### 1. Python and Git
 
@@ -62,16 +173,21 @@ missing.
   `py -3 --version`. On Windows, `python3` and sometimes `python` are a
   Microsoft Store placeholder that prints a message instead of a version; use
   whichever command prints a real version.
-  - Missing on Windows: tell the user this installs Python, then run
+  - Missing on Windows: tell the user this installs Python and accepts the
+    winget/Microsoft terms, then run
     `winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements`.
-    Windows may ask them to click **Yes**. Then call Python by its full path,
-    usually `%LOCALAPPDATA%\Programs\Python\Python312\python.exe` (or
-    `py -3`), in every later command, so nothing needs a restart.
+    Windows may ask them to click **Yes**. Your shell will not find the new
+    `python` until it restarts, so do not ask the user to restart anything:
+    call it by its full path, usually
+    `$env:LOCALAPPDATA\Programs\Python\Python312\python.exe` (PowerShell) or
+    `%LOCALAPPDATA%\Programs\Python\Python312\python.exe` (cmd), in every
+    later command.
   - Missing on macOS: run `xcode-select --install`; a window opens where the
     user clicks **Install**. It brings Python and Git together.
   - Missing on Linux: it needs the user's password, so ask them to run
-    `sudo apt install -y python3 git` (or their system's package manager) in a
-    terminal you tell them how to open.
+    `sudo apt install -y python3 git` (Ubuntu, Debian, Mint; other systems use
+    their own package manager) in a terminal you tell them how to open
+    (Ctrl+Alt+T on most desktops).
 - Git: `git --version`. Missing on Windows: run
   `winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements`
   and call it as `C:\Program Files\Git\cmd\git.exe`.
@@ -86,7 +202,8 @@ git clone https://github.com/Kullevi/barton-eval.git ~/barton-eval
 ```
 
 Below, `barton` means `<python> <home>/barton-eval/barton.py` with the Python
-command that worked. Check it runs: `barton check` prints what is installed.
+command that worked. Check it runs: `barton check` prints what is installed as
+JSON.
 
 ### 3. The skill
 
@@ -106,19 +223,118 @@ computer, for example
 ### 4. The model CLIs and logins
 
 Follow step 1 of `SKILL.md`: install the Claude Code and/or Codex CLI for the
-models the user wants to test and start each login yourself, so the user only
+models the user wants to test, and start each login yourself, so the user only
 clicks **Authorize** in the browser.
 
 ### 5. Done
 
 Tell the user, in two or three sentences, that Barton is ready, and that they
 can now say for example *"test GPT-6.2 Sol on my project"* in any project
-folder. Mention that a first run takes some minutes per task and model, and
-that they will get cards to share at the end.
+folder. Mention that a run takes some minutes per task and model, and that
+they get cards to share at the end.
+
+### 6. Give a fix back (with the user)
+
+If anything during setup did not work as written here and you found what fixed
+it, in Barton itself or in these instructions, it will help the next person
+too. Tell the user what you fixed, and ask whether they want to send it to
+Barton as a **pull request**: a proposed change that the maintainers read and,
+if it is right, add to Barton, with the user named as its author. Explain that
+it is how developers contribute to open source, that it is free and public, and
+that their GitHub user name will show on it.
+
+If they want to:
+
+1. They need a GitHub account (github.com → Sign up) and the GitHub CLI
+   (`gh`; on Windows `winget install GitHub.cli`, on macOS `brew install gh`,
+   on Linux see cli.github.com). Start `gh auth login --web` yourself; the
+   user signs in in the browser it opens.
+2. In the Barton folder: `gh repo fork --remote`, then a new branch, the fix,
+   and a commit whose message says what was wrong and on which system.
+3. `gh pr create --repo Kullevi/barton-eval`, with a title and a short
+   description in plain words: what happened, what fixed it, and the system it
+   was tested on. Show the user the text before sending it, and give them the
+   link afterwards.
+
+Keep the change to what was actually wrong, never include paths, names, code
+or results from the user's projects, and do not add other improvements to the
+same request.
+
+---
+
+## Commands
+
+Run from the root of the project under test, or pass `--repo PATH`. Every
+command prints JSON. Your assistant runs these; you never need to.
+
+| Command | What it does |
+|---|---|
+| `check` | Which tools are installed and logged in. |
+| `mine [--max-files N] [--max-lines N] [--show N]` | Commits that could become tasks, grouped small, medium and large by changed code lines. |
+| `config [--setup CMD] [--link PATH...] [--copy PATH...] [--public yes\|no]` | How task folders are prepared: an install command, folders to link (such as `node_modules`), untracked files to copy (such as `.env`), and whether the repo is public. |
+| `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
+| `validate ID` | Check that the task's check fails before the change and passes twice with it. |
+| `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
+| `run ID --harness claude\|codex --model M [--effort E] [--attempt N] [--again]` | Run one model on one task in a clean copy and record the result. |
+| `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
+| `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
+| `status` | Progress and scores so far. |
+| `report [--no-open]` | Build the results page and open it in the browser. |
+| `clean` | Remove task folders left by interrupted runs. |
+
+### Where things are kept
+
+- `<project>/.barton/`: the tasks (`config.json`), results (`results.jsonl`,
+  `prefs.jsonl`), each run's output and diff under `runs/`, and `report.html`.
+  It is listed in the project's `.git/info/exclude`, so git ignores it without
+  a change to `.gitignore`.
+- `~/.barton/w/`: temporary copies of the code while a model works, removed
+  after each run.
+
+## Troubleshooting
+
+- **`barton check` shows `logged_in: false`.** Ask your assistant to log in
+  again; it opens the browser for you. The Claude and ChatGPT desktop apps do
+  not always share their login with the command-line tools, so a separate
+  login may be needed once.
+- **A run's outcome is `error`.** The run could not happen, for example a
+  wrong model name, a login that expired, or a usage limit. Errors are left out
+  of every card. Your assistant fixes the cause and runs it again.
+- **Every task is `failed` for every model.** Usually the tests cannot run in
+  the task folder: packages are missing or a setting file is absent. Your
+  assistant fixes it with `config --setup`, `--link` or `--copy`.
+- **The cards say the tasks were too easy.** Every model solved nearly
+  everything. Ask your assistant to add harder tasks: larger commits, or ones
+  that touch several parts of the code.
+- **A terminal window flashes up on Windows during a run.** That should not
+  happen. Please report it, with what was running, as an issue on GitHub.
+- **Codex says commands are blocked on Windows.** Update Barton (below);
+  current versions run Codex with the sandbox setting Windows needs.
 
 ## Updating
 
-`git -C <home>/barton-eval pull`, then copy `SKILL.md` again (step 3).
+Ask your assistant to update Barton. It runs `git -C <home>/barton-eval pull`
+and copies `SKILL.md` again (setup step 3).
+
+## Uninstalling
+
+Ask your assistant to remove Barton. It deletes:
+
+- the `barton-eval` folder in the home folder;
+- the skill (`~/.claude/skills/barton/` and/or `~/.codex/skills/barton/`, or
+  the Barton line in `~/.codex/AGENTS.md`);
+- `~/.barton/`;
+- and, if the user also wants their results gone, the `.barton/` folder in each
+  tested project and its line in that project's `.git/info/exclude`.
+
+The model CLIs stay installed, since the user may use them for other things.
+
+## Why the name
+
+In Elizabeth Moon's *Deed of Paksenarrion* books, a barton is the yard where
+the yeomen of Gird drill and are tested.
+Girdish, Barton's sibling, takes its name from Gird himself. Barton is that
+yard for models: one place, your own ground, the same drills for everyone.
 
 ## License
 

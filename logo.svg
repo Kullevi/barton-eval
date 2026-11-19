@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <!-- Barton: Kullevi's mark inside the outline of a house, open at the bottom where the door
        stands (a barton in Moon's books is the yard and hall where yeomen are tested).
-       Same size and weight as Girdish (ring open at the top) and Kuakgan (open at the bottom). -->
+       Same visual weight as Girdish (ring open at the top) and Kuakgan (open at the bottom). -->
   <style>g { color: #0f9d6b } @media (prefers-color-scheme: dark) { g { color: #2fd08b } }</style>
   <g fill="currentColor">
-    <path d="M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z" transform="translate(50 59) scale(.62) translate(-50 -52)"/>
-    <path d="M37,89 H11 V45 L50,9 L89,45 V89 H63" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z" transform="translate(50 59) scale(.6) translate(-50 -52)"/>
+    <path d="M38,86 H14 V47 L50,14 L86,47 V86 H62" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

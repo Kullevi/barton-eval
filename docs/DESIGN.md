@@ -46,9 +46,11 @@ The first trial on a small library showed the failure to avoid: two models
 solved every small task, so the run said "equal" when it only meant "too
 easy". Three changes address it:
 
-- **Difficulty mix.** `mine` groups candidates by changed code lines (small
-  under 25, medium up to 150, large above) and the test leader picks mostly
-  medium, some large, a few small.
+- **Hard tasks, enough of them.** `mine` groups candidates by changed code
+  lines (small under 25, medium up to 150, large above). The test leader picks
+  mostly large and medium ones, aiming for the best model to solve about half
+  to four fifths, and by default runs 10 coding and 5 review tasks, never
+  fewer than 5 of each when the history has them.
 - **Quality when both passed.** A blind A/B judgment of solutions that both
   pass, in both orders; a win counts only when both orders agree (the standard
   defence against position bias in pairwise LLM judging, as in MT-Bench and

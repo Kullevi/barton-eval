@@ -48,8 +48,9 @@ terminal. Offer to show it later; do not do it now.
 
 Decide a sensible plan and state it in a few lines, then start unless the user
 changes something. Default: the new model against the model the user normally
-uses, each at its default effort, one attempt, about 6 coding tasks and 2
-review tasks. Mention roughly how long it takes (a few minutes per task and
+uses, each at its default effort, one attempt, about 10 coding tasks and 5
+review tasks. Never fewer than 5 of each unless the history does not have them;
+then say so. Mention roughly how long it takes (a few minutes per task and
 model) and, in passing, about what it costs; do not demand approval for the
 cost. The user may change, in their own words:
 
@@ -58,8 +59,9 @@ cost. The user may change, in their own words:
 - how many attempts per level (more attempts give a fairer picture),
 - coding tasks, review tasks or both, and how many.
 
-Presets you can offer by name: **quick** (4 tasks, 1 attempt), **standard**
-(8 tasks, 1 attempt), **thorough** (12 tasks, 3 attempts).
+Presets you can offer by name: **quick** (6 coding and 3 review tasks, 1
+attempt), **standard** (10 and 5, 1 attempt), **thorough** (16 and 6, 3
+attempts).
 
 ## 3. Prepare the project (once)
 
@@ -78,9 +80,12 @@ Look at the repository yourself and decide how its code and tests run.
 
 Run `barton mine`. It lists commits that changed code, grouped as `small`,
 `medium` and `large` by how much code they changed, newest and those with tests
-first. **Mix difficulty**: mostly medium, some large, a few small. Small tasks
-are quick, but strong models solve nearly all of them, so a run of only small
-tasks cannot tell models apart. For each task you keep, write a JSON file and
+first. **Choose hard tasks**: mostly large and medium, few small. Current
+models solve nearly every small task, and a run where every model gets full
+marks tells the user nothing. Aim for tasks the best model may fail: bug fixes
+whose cause is not obvious from the description, behaviour changes touching
+several functions or files, and edge cases the tests pin down. A good run has
+the best model solving roughly half to four fifths of the tasks. For each task you keep, write a JSON file and
 run `barton task-add <file>`:
 
 ```json
@@ -171,9 +176,12 @@ and is no longer independent). Record each answer:
 A win counts only when both orders agree; otherwise it is a tie, which cancels
 the judge's habit of favouring the first or the second answer.
 
-**Too easy?** If every model solved nearly every task, the run says little:
-add a few harder tasks (larger commits, or ones touching several parts of the
-code) and run those too, before you show the result.
+**Too easy?** If the best setting solved 90 % or more of the coding tasks, or
+every model found every planted bug, the run cannot tell the models apart. Before
+you show the result, add harder tasks (larger commits, bug fixes, changes
+across several files; for reviews, commits with more logic) and run every model
+on them, until the best setting is clearly below full marks. Tasks already run
+stay: they are frozen, and removing them would hide results.
 
 ## 7. Show the result
 

@@ -2,8 +2,8 @@
 <!-- Barton-eval results page: `barton report` fills in the data below and opens
      this file. No server and no libraries. The result is drawn as one landscape
      dashboard on a canvas that fills the window and lays itself out for its
-     size; Copy image and Save PNG draw the same dashboard at the 1200x630
-     link-preview size. Visual system shared with Kuakgan (its dashboard.html
+     size, 2:1 by default; Copy image and Save PNG draw the same dashboard at
+     the window's size and at least twice its resolution. Visual system shared with Kuakgan (its dashboard.html
      :root): tokens, type scale 12/14/16/20/28/48, 8 px grid, series palette. -->
 <html lang="en">
 <head>
@@ -237,7 +237,7 @@ function qualitySpec(color) {
 // ---- Drawing -----------------------------------------------------------
 // One dashboard: brand row, headline result, a main panel with the coding tasks,
 // side panels for quality and review, and the numbers behind it in a footer.
-// Laid out landscape at the 1200x630 proportions; on a narrow window the panels
+// Laid out landscape, 2:1 by default and wider when the window is short; on a narrow window the panels
 // stack instead. Every size is a step of the shared type scale times `s`.
 
 const font = (size, weight = 400) => `${weight} ${size}px ${FONT}`;
@@ -379,7 +379,7 @@ function drawDashboard(c, w, h, T, stacked) {
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.textBaseline = "alphabetic";
   const P = panelsOf();
   x.fillStyle = T.page; x.fillRect(0, 0, w, h);
-  const s = stacked ? Math.min(1, Math.max(.75, w / 520)) : Math.max(.55, Math.min(w / 1200, h / 630, 2));
+  const s = stacked ? Math.min(1, Math.max(.75, w / 520)) : Math.max(.55, Math.min(w / 1200, h / 600, 2.5));
   const pad = (stacked ? 16 : 32) * s, gap = (stacked ? 16 : 24) * s;
 
   // Brand row.
@@ -480,17 +480,19 @@ function render() {
   const avail = innerHeight - $("wrap").getBoundingClientRect().top - 16 + scrollY;
   const stacked = w < 720 || w / avail < 1.2;
   const P = panelsOf();
-  const h = stacked && P.main ? stackedHeight(w, P) : Math.max(360, Math.min(avail, w / 1.4));
+  const h = stacked && P.main ? stackedHeight(w, P) : Math.max(320, Math.min(avail, w / 2));
+  view = { w, h, stacked };
   c.style.height = h + "px";
   paint(c, w, h, T, stacked, devicePixelRatio || 1);
   if (P.main) c.setAttribute("aria-label", `${P.main.headline}. ${P.main.sub}`);
   renderTable();
 }
 
-// The image to share: the same dashboard at 1200x630, drawn at twice the resolution.
+// The image to share: the dashboard as shown, at least twice the screen's resolution.
+let view = { w: 1200, h: 600, stacked: false };
 function shareImage(cb) {
   const c = document.createElement("canvas");
-  paint(c, 1200, 630, THEMES[themeName()], false, 2);
+  paint(c, view.w, view.h, THEMES[themeName()], view.stacked, Math.max(2, devicePixelRatio || 1));
   c.toBlob(cb, "image/png");
 }
 

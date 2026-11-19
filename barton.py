@@ -46,6 +46,13 @@ CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb",
 
 # ---------------------------------------------------------------- helpers
 
+if os.name == "nt":
+    # A program that crashes during a run (a test, a CLI) should end with an error
+    # code, not open a Windows error box nobody is there to close. Child processes
+    # inherit this error mode.
+    import ctypes
+    ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)  # no critical-error, crash or open-file boxes
+
 
 def sp_run(cmd, **kw):
     """Every subprocess goes through here. On Windows it gets a hidden console, which

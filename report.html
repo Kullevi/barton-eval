@@ -1,10 +1,10 @@
 <!doctype html>
 <!-- Barton-eval results page: `barton report` fills in the data below and opens
-     this file. No server and no libraries. Each card is drawn on a canvas at the
-     1200x630 link-preview size, so it can be copied or saved as a PNG and shared.
-     Visual system shared with Kuakgan (its dashboard.html :root): tokens, type
-     scale 12/14/16/20/28/48, 8 px grid, series palette. On a card the 56 px
-     margin is Kuakgan's 32 px frame padding plus its 24 px card padding. -->
+     this file. No server and no libraries. The result is drawn as one landscape
+     dashboard on a canvas that fills the window and lays itself out for its
+     size; Copy image and Save PNG draw the same dashboard at the 1200x630
+     link-preview size. Visual system shared with Kuakgan (its dashboard.html
+     :root): tokens, type scale 12/14/16/20/28/48, 8 px grid, series palette. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -13,78 +13,58 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cstyle%3Eg %7B color: #0f9d6b %7D %40media (prefers-color-scheme: dark) %7B g %7B color: #2fd08b %7D %7D%3C/style%3E%3Cg fill='currentColor'%3E%3Cpath d='M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z' transform='translate(50 59) scale(.62) translate(-50 -52)'/%3E%3Cpath d='M37,89 H11 V45 L50,9 L89,45 V89 H63' fill='none' stroke='currentColor' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root {
-  --bg:#f6f7f9; --surface:#ffffff; --border:#e6e8ec; --text:#111418; --muted:#5d6673;
-  --accent:#0f9d6b; --track:#eef0f3; --faint:#8b929d; --warn:#c27a12; --err:#d0453b;
+  --bg:#f6f7f9; --surface:#ffffff; --border:#e6e8ec; --track:#eef0f3; --text:#111418; --muted:#5d6673;
+  --faint:#8b929d; --accent:#0f9d6b; --warn:#c27a12; --err:#d0453b;
   --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#1e242c; --faint:#677180; --warn:#e0a043; --err:#f0675c; }
-}
-:root[data-theme="dark"] { --bg:#0d1014; --surface:#151a20; --border:#252c35; --text:#eef1f4; --muted:#8b95a3; --accent:#2fd08b; --track:#1e242c; --faint:#677180; --warn:#e0a043; --err:#f0675c; }
+:root[data-theme="dark"] { --bg:#0d1014; --surface:#151a20; --border:#252c35; --track:#1e242c; --text:#eef1f4; --muted:#8b95a3; --faint:#677180; --accent:#2fd08b; --warn:#e0a043; --err:#f0675c; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 var(--font); }
-main { max-width:1048px; margin:0 auto; padding:48px 16px 64px; }
-header { display:flex; gap:16px 24px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-.brand { display:flex; gap:12px; align-items:center; flex:1; min-width:240px; }
-.brand svg { width:32px; height:32px; flex:none; color:var(--accent); }
-.brand h1 { font-size:20px; font-weight:650; margin:0; line-height:1.2; }
-.sub { color:var(--muted); font-size:14px; margin:0 0 32px 44px; }
-.tools { display:flex; gap:16px; align-items:center; flex-wrap:wrap; font-size:14px; color:var(--muted); }
-.tools input { font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 10px; width:176px; }
+html, body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 var(--font); }
+.bar { display:flex; gap:8px 12px; align-items:center; flex-wrap:wrap; justify-content:flex-end; padding:12px 16px 0; color:var(--muted); }
+.bar input { font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:5px 10px; width:160px; }
 .seg { display:inline-flex; background:var(--track); border-radius:8px; padding:2px; }
-.seg button { font:inherit; font-weight:600; font-size:14px; border:0; background:none; color:var(--muted); padding:4px 12px; border-radius:6px; cursor:pointer; }
+.seg button, .act { font:inherit; font-weight:600; border:0; background:none; color:var(--muted); padding:5px 12px; border-radius:6px; cursor:pointer; }
 .seg button[aria-pressed="true"] { background:var(--surface); color:var(--text); }
-.cards { display:grid; gap:32px; }
-.card { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
-.card canvas { width:100%; height:auto; display:block; }
-.actions { display:flex; gap:8px; padding:16px 24px; border-top:1px solid var(--border); flex-wrap:wrap; }
-button.act { font:inherit; font-size:14px; font-weight:600; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
-button.act.primary { background:var(--text); color:var(--surface); border-color:var(--text); }
-h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:48px 0 16px; }
+.act { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; }
+.act.primary { background:var(--text); color:var(--surface); border-color:var(--text); }
+#wrap { padding:12px 16px 0; }
+#dash { display:block; width:100%; }
+.below { max-width:1200px; margin:0 auto; padding:32px 16px 48px; }
+.meta { color:var(--muted); margin:0 0 24px; }
+h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
 .table { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow-x:auto; }
-table { width:100%; border-collapse:collapse; font-size:14px; }
-th, td { text-align:left; padding:12px 16px; border-bottom:1px solid var(--border); vertical-align:top; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:10px 16px; border-bottom:1px solid var(--border); vertical-align:top; }
 tr:last-child td { border-bottom:0; }
 th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
 td small { display:block; color:var(--muted); }
 .ok { color:var(--accent); font-weight:650; } .no { color:var(--err); font-weight:650; } .wait { color:var(--muted); }
-.empty { padding:48px 24px; text-align:center; color:var(--muted); background:var(--surface); border:1px dashed var(--border); border-radius:16px; }
-footer { margin-top:48px; color:var(--muted); font-size:14px; }
+footer { margin-top:32px; color:var(--muted); }
 footer a { color:var(--text); font-weight:600; text-decoration:none; }
-@media (max-width:640px) { main { padding-top:24px; } .sub { margin-left:0; } .actions { padding:12px 16px; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div class="brand">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><g fill="currentColor">
-        <path d="M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z" transform="translate(50 59) scale(.62) translate(-50 -52)"/>
-        <path d="M37,89 H11 V45 L50,9 L89,45 V89 H63" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-      </g></svg>
-      <h1 id="title">Barton results</h1>
-    </div>
-    <div class="tools">
-      <label>Your name on the cards <input id="handle" placeholder="@yourname"></label>
-      <span class="seg"><button id="hide" aria-pressed="false" title="Show 'My project' instead of the project name, and leave out task descriptions">Hide names</button></span>
-      <span class="seg" id="theme" role="group" aria-label="Card theme">
-        <button data-v="auto">Auto</button><button data-v="light">Light</button><button data-v="dark">Dark</button>
-      </span>
-    </div>
-  </header>
-  <p class="sub" id="sub"></p>
-  <div class="cards" id="cards"></div>
+<div class="bar">
+  <label>Your name <input id="handle" placeholder="@yourname"></label>
+  <span class="seg"><button id="hide" aria-pressed="false" title="Show 'My project' instead of the project name, and leave out task descriptions">Hide names</button></span>
+  <span class="seg" id="theme" role="group" aria-label="Theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span>
+  <button class="act primary" id="copy">Copy image</button>
+  <button class="act" id="save">Save PNG</button>
+</div>
+<div id="wrap"><canvas id="dash" role="img"></canvas></div>
+<div class="below">
+  <p class="meta" id="meta"></p>
   <h2>Task by task</h2>
   <div class="table"><table id="tasks"></table></div>
   <footer>Made with <a href="https://github.com/Kullevi/barton-eval">Barton-eval</a>, open source by
-    <a href="https://kullevi.com">Kullevi</a>. Results stay on your computer unless you share a card.</footer>
-</main>
+    <a href="https://kullevi.com">Kullevi</a>. Results stay on your computer unless you share an image.</footer>
+</div>
 <script>
 const DATA = /*BARTON_DATA*/null;
 const THEMES = {
-  light: { bg: "#ffffff", text: "#111418", muted: "#5d6673", border: "#e6e8ec", track: "#eef0f3", tie: "#c5cbd3", accent: "#0f9d6b",
+  light: { page: "#f6f7f9", bg: "#ffffff", text: "#111418", muted: "#5d6673", border: "#e6e8ec", track: "#eef0f3", tie: "#c5cbd3", accent: "#0f9d6b",
     series: ["#0f9d6b", "#3b6fe0", "#e0882b", "#8a5cf0", "#e0457b", "#1aa6b8", "#9aa3ad"] },
-  dark: { bg: "#151a20", text: "#eef1f4", muted: "#8b95a3", border: "#252c35", track: "#1e242c", tie: "#46505c", accent: "#2fd08b",
+  dark: { page: "#0d1014", bg: "#151a20", text: "#eef1f4", muted: "#8b95a3", border: "#252c35", track: "#1e242c", tie: "#46505c", accent: "#2fd08b",
     series: ["#2fd08b", "#6b93f0", "#f0a352", "#a585f5", "#f06a95", "#3cc3d4", "#b4bcc5"] },
 };
 const FONT = '"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif';
@@ -93,12 +73,13 @@ const HARNESS = { claude: "Claude Code", codex: "Codex CLI" };
 const LOGO_MARK = new Path2D("M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z");
 const LOGO_HOUSE = new Path2D("M37,89 H11 V45 L50,9 L89,45 V89 H63");
 const $ = (id) => document.getElementById(id);
-// With Hide names on, nothing on the page or the cards names the project or describes its code.
-const hidden = () => storeGet("barton-hide", "") === "1";
-const repoName = () => hidden() ? "My project" : DATA.repo;
 
 function storeGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
 function storeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+// With Hide names on, nothing on the page or the image names the project or describes its code.
+const hidden = () => storeGet("barton-hide", "") === "1";
+const repoName = () => hidden() ? "My project" : DATA.repo;
+const themeName = () => storeGet("barton-theme", "light") === "dark" ? "dark" : "light";
 
 // ---- Data --------------------------------------------------------------
 
@@ -129,6 +110,7 @@ function settings(kind) {
   for (const s of list) {
     s.runs = s.attempts.size || 1;
     s.label = s.model + (efforts(s.model) > 1 ? ` (${s.effort})` : "");
+    s.tag = efforts(s.model) > 1 ? s.effort : "";
     s.detail = `${s.effort} · ${HARNESS[s.harness] || s.harness}`;
   }
   return list;
@@ -205,9 +187,10 @@ function scoreSpec(kind, color) {
     if (other) stats.splice(2, 0, { label: "Other findings", value: String(other) });
   }
   return {
+    n, runs, method: methodShort(list),
     key: kind + "-score", kicker: write ? "Coding tasks solved" : "Bugs found in code review", headline, sub, stats,
     rows: list.map(s => ({
-      name: s.model, detail: s.detail, color: color(s.model),
+      name: s.model, tag: s.tag, detail: s.detail, color: color(s.model),
       segs: Array.from({ length: s.n }, (_, i) => i < s.hits ? "w" : "l"),
       value: `${s.hits} / ${s.n}`, note: [fmtMin(s.secs / s.runs), costText(s)].filter(Boolean).join(" · "),
     })),
@@ -233,6 +216,7 @@ function qualitySpec(color) {
   const clear = next ? (top.w - top.l) - (next.w - next.l) >= 2 : top.w > top.l;
   const judges = DATA.quality_judges || [];
   return {
+    n: q.length, runs: 1,
     key: "write-quality", kicker: "Better solution when both passed",
     headline: clear ? `${top.label} wrote the better solution ${top.w} of ${top.segs.length} times` : "No clear winner on quality",
     sub: "A blind AI judge compared solutions that both passed, in both orders.",
@@ -242,20 +226,20 @@ function qualitySpec(color) {
       { label: "A win counts", value: "Only if both orders agree" },
     ],
     rows: list.map(s => ({
-      name: s.model, detail: s.detail, color: color(s.model), segs: s.segs,
+      name: s.model, tag: s.tag, detail: s.detail, color: color(s.model), segs: s.segs,
       value: `${s.w} won`, note: `${s.t} tie · ${s.l} lost`,
     })),
   };
 }
 
-function cardSpecs() {
-  const color = modelColors();
-  return [scoreSpec("write", color), qualitySpec(color), scoreSpec("review", color)].filter(Boolean);
-}
+
 
 // ---- Drawing -----------------------------------------------------------
+// One dashboard: brand row, headline result, a main panel with the coding tasks,
+// side panels for quality and review, and the numbers behind it in a footer.
+// Laid out landscape at the 1200x630 proportions; on a narrow window the panels
+// stack instead. Every size is a step of the shared type scale times `s`.
 
-const W = 1200, H = 630, M = 56;
 const font = (size, weight = 400) => `${weight} ${size}px ${FONT}`;
 
 function setFont(x, size, weight, spacing = 0) {
@@ -264,18 +248,10 @@ function setFont(x, size, weight, spacing = 0) {
 }
 
 function ellipsize(x, text, maxW) {
+  if (maxW <= 0) return "";
   if (x.measureText(text).width <= maxW) return text;
   while (text.length > 1 && x.measureText(text + "…").width > maxW) text = text.slice(0, -1);
   return text + "…";
-}
-
-// Largest size from the scale (48, 28) that fits, via 40 and 36 in between; past that, ellipsis.
-function fitHeadline(x, text, maxW) {
-  for (const s of [48, 40, 36, 28]) {
-    setFont(x, s, 650, -0.02 * s);
-    if (x.measureText(text).width <= maxW) return text;
-  }
-  return ellipsize(x, text, maxW);
 }
 
 function roundRect(x, X, Y, w, h, r) {
@@ -291,139 +267,237 @@ function drawLogo(x, X, Y, size, colour) {
   x.stroke(LOGO_HOUSE); x.restore();
 }
 
-function drawCard(spec, T) {
-  const c = document.createElement("canvas");
-  c.width = W * 2; c.height = H * 2;
-  const x = c.getContext("2d");
-  x.scale(2, 2); x.textBaseline = "alphabetic";
-  x.fillStyle = T.bg; x.fillRect(0, 0, W, H);
+// A panel with an uppercase title (and a note on the right); returns its content box.
+function drawPanel(x, T, s, X, Y, w, h, title, note) {
+  x.fillStyle = T.bg; roundRect(x, X, Y, w, h, 16 * s); x.fill();
+  x.strokeStyle = T.border; x.lineWidth = 1; roundRect(x, X + .5, Y + .5, w - 1, h - 1, 16 * s); x.stroke();
+  const p = 24 * s, base = Y + p + 10 * s;
+  setFont(x, 12 * s, 400); const nw = note ? x.measureText(note).width : 0;
+  if (note) { x.fillStyle = T.muted; x.textAlign = "right"; x.fillText(note, X + w - p, base); x.textAlign = "left"; }
+  setFont(x, 12 * s, 600, .72 * s); x.fillStyle = T.muted;
+  x.fillText(ellipsize(x, title.toUpperCase(), w - 2 * p - nw - 16 * s), X + p, base);
+  return { x: X + p, y: Y + p + 28 * s, w: w - 2 * p, h: h - 2 * p - 28 * s };
+}
 
-  // Brand row: logo and name left, whose codebase right.
-  drawLogo(x, M, 40, 32, T.accent);
-  setFont(x, 16, 650); x.fillStyle = T.text; x.fillText("Barton-eval", M + 44, 62);
-  const handle = $("handle").value.trim();
-  setFont(x, 14, 400); x.fillStyle = T.muted; x.textAlign = "right";
-  x.fillText(ellipsize(x, handle ? `${handle} · ${repoName()}` : repoName(), 480), W - M, 62); x.textAlign = "left";
+// One block per task (coloured when solved, grey for a tie); a continuous bar when they are too many.
+function drawBlocks(x, T, segs, colour, X, Y, w, h) {
+  const n = segs.length, fills = { w: colour, t: T.tie, l: T.track };
+  const gap = n <= 12 ? Math.max(2, h * .3) : n <= 30 ? 2 : 0;
+  if (gap && (w - gap * (n - 1)) / n >= 3) {
+    const bw = (w - gap * (n - 1)) / n;
+    segs.forEach((v, j) => { x.fillStyle = fills[v]; roundRect(x, X + j * (bw + gap), Y, bw, h, Math.min(h / 3, bw / 3)); x.fill(); });
+    return;
+  }
+  x.save(); roundRect(x, X, Y, w, h, h / 3); x.fillStyle = T.track; x.fill(); x.clip();
+  let cx = X;
+  for (const v of ["w", "t"]) { const sw = w * segs.filter(k => k === v).length / n; x.fillStyle = fills[v]; x.fillRect(cx, Y, sw, h); cx += sw; }
+  x.restore();
+}
 
-  // Kicker, headline result and one supporting sentence.
-  setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText(spec.kicker.toUpperCase(), M, 128);
-  x.fillStyle = T.text; x.fillText(fitHeadline(x, spec.headline, W - 2 * M), M, 180);
-  setFont(x, 20, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, spec.sub, W - 2 * M), M, 216);
-
-  // Rows: name, one block per task (or comparison), the count and a note.
-  const top = 256, bottom = 512, maxRows = 7;
-  const rows = spec.rows.slice(0, spec.rows.length > maxRows ? maxRows - 1 : maxRows);
-  const hidden = spec.rows.length - rows.length;
-  const slots = rows.length + (hidden ? 1 : 0);
-  const rowH = Math.min(72, (bottom - top) / slots);
-  const compact = rowH < 56;
-  const start = top + ((bottom - top) - slots * rowH) / 2;
-  const labelW = 304, valueW = 176, barX = M + labelW, barW = W - M - valueW - 24 - barX;
-  rows.forEach((r, i) => {
-    const y = start + i * rowH, mid = y + rowH / 2;
-    const colour = T.series[r.color];
-    // Label: colour dot, model name, effort and harness beneath (or beside, when rows are tight).
-    x.fillStyle = colour; x.beginPath(); x.arc(M + 6, compact ? mid : mid - 9, 6, 0, Math.PI * 2); x.fill();
-    setFont(x, 16, 650); x.fillStyle = T.text;
-    if (compact) {
-      const name = ellipsize(x, r.name, labelW - 32 - 96);
-      x.fillText(name, M + 24, mid + 6);
-      const w = x.measureText(name).width;
-      setFont(x, 14, 400); x.fillStyle = T.muted;
-      x.fillText(ellipsize(x, r.detail.split(" · ")[0], labelW - 32 - w - 8), M + 24 + w + 8, mid + 6);
-    } else {
-      x.fillText(ellipsize(x, r.name, labelW - 32), M + 24, mid - 3);
-      setFont(x, 14, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.detail, labelW - 32), M + 24, mid + 19);
-    }
-    // Blocks: one per task, coloured when solved; continuous bar when there are too many to show apart.
-    const n = r.segs.length, bh = Math.min(24, Math.max(12, rowH * 0.42)), by = mid - bh / 2;
-    const gap = n <= 12 ? 6 : n <= 40 ? 3 : 0;
-    const fills = { w: colour, t: T.tie, l: T.track };
-    if (gap) {
-      const w = (barW - gap * (n - 1)) / n;
-      r.segs.forEach((s, j) => { x.fillStyle = fills[s]; roundRect(x, barX + j * (w + gap), by, w, bh, Math.min(6, w / 3)); x.fill(); });
-    } else {
-      x.fillStyle = T.track; roundRect(x, barX, by, barW, bh, 6); x.fill();
-      let cx = barX;
-      x.save(); roundRect(x, barX, by, barW, bh, 6); x.clip();
-      for (const s of ["w", "t"]) { const w = barW * r.segs.filter(v => v === s).length / n; x.fillStyle = fills[s]; x.fillRect(cx, by, w, bh); cx += w; }
-      x.restore();
-    }
-    // Count, and time and cost (or tie and lost) beneath.
+// Rows of one panel. Large rows carry the effort, harness, time and cost on a second line.
+function drawRows(x, T, s, rows, box, large) {
+  if (!rows.length) return;
+  const minH = (large ? 36 : 26) * s, maxH = (large ? 64 : 40) * s;
+  let shown = rows, more = 0;
+  if (box.h / rows.length < minH) {
+    const k = Math.max(1, Math.floor(box.h / minH) - 1);
+    shown = rows.slice(0, k); more = rows.length - k;
+  }
+  const slots = shown.length + (more ? 1 : 0);
+  const rowH = Math.min(maxH, box.h / slots);
+  box = { ...box, y: box.y + (box.h - slots * rowH) / 2 };
+  const two = large && rowH >= 48 * s;
+  const labelW = box.w * (large ? .3 : .36), valueW = box.w * (large ? .22 : .2);
+  const barX = box.x + labelW, barW = box.w - labelW - valueW - 16 * s;
+  const nameSize = (large ? 16 : 14) * s, valueSize = (large ? 20 : 14) * s;
+  shown.forEach((r, i) => {
+    const mid = box.y + i * rowH + rowH / 2, colour = T.series[r.color];
+    const ny = two ? mid - 3 * s : mid + nameSize * .35;
+    x.fillStyle = colour; x.beginPath(); x.arc(box.x + 5 * s, ny - nameSize * .33, 5 * s, 0, Math.PI * 2); x.fill();
+    setFont(x, nameSize, 650); x.fillStyle = T.text;
+    const tagW = !two && r.tag ? (setFont(x, (large ? 14 : 12) * s, 400), x.measureText(r.tag).width + 6 * s) : 0;
+    setFont(x, nameSize, 650);
+    const name = ellipsize(x, r.name, labelW - 28 * s - tagW);
+    x.fillText(name, box.x + 18 * s, ny);
+    const nameW = x.measureText(name).width;
+    setFont(x, (large ? 14 : 12) * s, 400); x.fillStyle = T.muted;
+    if (two) x.fillText(ellipsize(x, r.detail, labelW - 28 * s), box.x + 18 * s, mid + 17 * s);
+    else if (tagW) x.fillText(r.tag, box.x + 18 * s + nameW + 6 * s, ny);
+    const bh = Math.min((large ? 22 : 14) * s, rowH * .42);
+    drawBlocks(x, T, r.segs, colour, barX, mid - bh / 2, barW, bh);
     x.textAlign = "right";
-    setFont(x, 20, 650); x.fillStyle = T.text; x.fillText(r.value, W - M, compact ? mid + 7 : mid - 1);
-    if (!compact && r.note) { setFont(x, 14, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.note, valueW), W - M, mid + 21); }
+    setFont(x, valueSize, 650); x.fillStyle = T.text;
+    x.fillText(r.value, box.x + box.w, two ? mid - 1 * s : mid + valueSize * .35);
+    if (two && r.note) { setFont(x, 12 * s, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.note, valueW), box.x + box.w, mid + 17 * s); }
     x.textAlign = "left";
   });
-  if (hidden) {
-    setFont(x, 14, 400); x.fillStyle = T.muted;
-    x.fillText(`+ ${hidden} more on the results page`, M + 24, start + rows.length * rowH + rowH / 2 + 5);
+  if (more) {
+    setFont(x, 12 * s, 400); x.fillStyle = T.muted;
+    x.fillText(`+ ${more} more in the table below`, box.x + 18 * s, box.y + shown.length * rowH + rowH / 2 + 4 * s);
+  }
+}
+
+function panelsOf() {
+  const color = modelColors();
+  const write = scoreSpec("write", color), review = scoreSpec("review", color), quality = qualitySpec(color);
+  const main = write || review;
+  const side = [write && quality, write && review].filter(Boolean);
+  return { main, side, write, review, quality };
+}
+
+const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison")
+  : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")} · ${p.runs === 1 ? "1 run each" : p.runs + " runs each"}`;
+const titleOf = p => p.key === "write-quality" ? "Better solution when both passed"
+  : p.key === "write-score" ? "Coding tasks solved" : "Planted bugs found in review";
+
+// The numbers behind the result, shown once in the footer.
+function footerStats(P) {
+  const st = [];
+  if (P.write) st.push({ label: "Coding tasks", value: String(P.write.n) });
+  if (P.review) st.push({ label: "Reviews", value: String(P.review.n) });
+  const runs = Math.max(...[P.write, P.review].filter(Boolean).map(p => p.runs));
+  st.push({ label: "Runs each", value: String(runs) });
+  const by = [P.write, P.review].filter(Boolean).map(p => p.method).filter(Boolean);
+  st.push({ label: "Judged by", value: [...new Set(by)].join(" + ") });
+  const judges = [...new Set([...judgesOf("write"), ...judgesOf("review"), ...(DATA.quality_judges || [])])];
+  if (judges.length) st.push({ label: "AI judge", value: judges.join(", ") });
+  st.push({ label: "Repo", value: DATA.public ? "Public" : "Private" });
+  return st;
+}
+
+// Narrow windows stack the panels; this is the height they need at width w.
+function stackedHeight(w, P) {
+  const s = Math.min(1, w / 640), pad = 16 * s, gap = 16 * s;
+  let h = pad + 28 * s + 104 * s;
+  for (const p of [P.main, ...P.side]) h += 76 * s + p.rows.length * (p === P.main ? 56 : 34) * s + gap;
+  return h + Math.ceil(footerStats(P).length / 2) * 48 * s + 72 * s + pad;
+}
+
+function drawDashboard(c, w, h, T, stacked) {
+  const dpr = c._dpr || 1;
+  const x = c.getContext("2d");
+  x.setTransform(dpr, 0, 0, dpr, 0, 0); x.textBaseline = "alphabetic";
+  const P = panelsOf();
+  x.fillStyle = T.page; x.fillRect(0, 0, w, h);
+  const s = stacked ? Math.min(1, w / 640) : Math.max(.55, Math.min(w / 1200, h / 630, 2));
+  const pad = (stacked ? 16 : 32) * s, gap = (stacked ? 16 : 24) * s;
+
+  // Brand row.
+  drawLogo(x, pad, pad, 28 * s, T.accent);
+  setFont(x, 16 * s, 650); x.fillStyle = T.text; x.fillText("Barton-eval", pad + 38 * s, pad + 20 * s);
+  const handle = $("handle").value.trim();
+  setFont(x, 14 * s, 400); x.fillStyle = T.muted; x.textAlign = "right";
+  x.fillText(ellipsize(x, handle ? `${handle} · ${repoName()}` : repoName(), w / 2 - pad), w - pad, pad + 20 * s); x.textAlign = "left";
+  if (!P.main) {
+    setFont(x, 20 * s, 400); x.fillStyle = T.muted;
+    x.fillText("No scored runs yet. Ask your agent to continue the Barton run.", pad, pad + 96 * s);
+    return;
   }
 
-  // Footer: the numbers behind the result left, the credit right.
-  x.fillStyle = T.border; x.fillRect(M, 536, W - 2 * M, 1);
-  const credit = "github.com/Kullevi/barton-eval";
-  setFont(x, 14, 400); const creditW = x.measureText(credit).width;
-  x.textAlign = "right";
-  setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText("RUN WITH BARTON-EVAL · BY KULLEVI", W - M, 568);
-  setFont(x, 14, 400); x.fillStyle = T.muted; x.fillText(credit, W - M, 592);
-  x.textAlign = "left";
-  let sx = M; const limit = W - M - Math.max(creditW, 280) - 32;
-  for (const s of spec.stats) {
-    setFont(x, 16, 650); const vw = x.measureText(s.value).width;
-    setFont(x, 12, 600, 0.72); const lw = x.measureText(s.label.toUpperCase()).width;
-    const room = limit - sx;
-    if (room < 96) break;
-    const w = Math.min(Math.max(vw, lw), room);
-    x.fillStyle = T.muted; x.fillText(ellipsize(x, s.label.toUpperCase(), room), sx, 568);
-    setFont(x, 16, 650); x.fillStyle = T.text; x.fillText(ellipsize(x, s.value, room), sx, 592);
-    sx += w + 40;
+  // Headline result: the largest step of the scale that fits.
+  let y = pad + 28 * s + 56 * s;
+  for (const size of [48, 40, 36, 28, 24, 20]) {
+    setFont(x, size * s, 650, -0.02 * size * s);
+    if (x.measureText(P.main.headline).width <= w - 2 * pad || size === 20) break;
   }
-  return c;
+  x.fillStyle = T.text; x.fillText(ellipsize(x, P.main.headline, w - 2 * pad), pad, y);
+  setFont(x, 16 * s, 400); x.fillStyle = T.muted;
+  x.fillText(ellipsize(x, P.main.sub, w - 2 * pad), pad, y + 28 * s);
+  const top = y + 56 * s;
+
+  // Footer: stats left, credit right (two columns of stats when stacked).
+  const stats = footerStats(P);
+  const footH = stacked ? Math.ceil(stats.length / 2) * 48 * s + 56 * s : 48 * s;
+  const footY = h - pad - footH;
+  x.fillStyle = T.border; x.fillRect(pad, footY - 16 * s, w - 2 * pad, 1);
+  const credit = "github.com/Kullevi/barton-eval", by = "RUN WITH BARTON-EVAL · BY KULLEVI";
+  setFont(x, 12 * s, 600, .72 * s); const byW = x.measureText(by).width;
+  if (stacked) {
+    stats.forEach((st, i) => {
+      const sx = pad + (i % 2) * (w - 2 * pad) / 2, sy = footY + Math.floor(i / 2) * 48 * s + 12 * s;
+      setFont(x, 12 * s, 600, .72 * s); x.fillStyle = T.muted; x.fillText(st.label.toUpperCase(), sx, sy);
+      setFont(x, 16 * s, 650); x.fillStyle = T.text; x.fillText(ellipsize(x, st.value, (w - 2 * pad) / 2 - 12 * s), sx, sy + 22 * s);
+    });
+    setFont(x, 12 * s, 600, .72 * s); x.fillStyle = T.muted; x.fillText(by, pad, h - pad - 22 * s);
+    setFont(x, 14 * s, 400); x.fillText(credit, pad, h - pad);
+  } else {
+    x.textAlign = "right";
+    setFont(x, 12 * s, 600, .72 * s); x.fillStyle = T.muted; x.fillText(by, w - pad, footY + 14 * s);
+    setFont(x, 14 * s, 400); x.fillText(credit, w - pad, footY + 38 * s);
+    x.textAlign = "left";
+    let sx = pad; const limit = w - pad - byW - 32 * s;
+    for (const st of stats) {
+      setFont(x, 16 * s, 650); const vw = x.measureText(st.value).width;
+      setFont(x, 12 * s, 600, .72 * s); const lw = x.measureText(st.label.toUpperCase()).width;
+      const room = limit - sx; if (room < 64 * s) break;
+      x.fillStyle = T.muted; x.fillText(ellipsize(x, st.label.toUpperCase(), room), sx, footY + 14 * s);
+      setFont(x, 16 * s, 650); x.fillStyle = T.text; x.fillText(ellipsize(x, st.value, room), sx, footY + 38 * s);
+      sx += Math.min(Math.max(vw, lw), room) + 32 * s;
+    }
+  }
+
+  // Panels.
+  const bottom = footY - 32 * s;
+  if (stacked) {
+    let py = top;
+    for (const p of [P.main, ...P.side]) {
+      const large = p === P.main, ph = 76 * s + p.rows.length * (large ? 56 : 34) * s;
+      drawRows(x, T, s, p.rows, drawPanel(x, T, s, pad, py, w - 2 * pad, ph, titleOf(p), noteOf(p)), large);
+      py += ph + gap;
+    }
+    return;
+  }
+  const full = w - 2 * pad;
+  const mainW = P.side.length ? (full - gap) * .6 : full;
+  drawRows(x, T, s, P.main.rows, drawPanel(x, T, s, pad, top, mainW, bottom - top, titleOf(P.main), noteOf(P.main)), true);
+  if (!P.side.length) return;
+  const sx = pad + mainW + gap, sw = full - mainW - gap;
+  const weights = P.side.map(p => p.rows.length + 1.6), total = weights.reduce((a, b) => a + b, 0);
+  let py = top;
+  P.side.forEach((p, i) => {
+    const ph = i === P.side.length - 1 ? bottom - py : (bottom - top - gap * (P.side.length - 1)) * weights[i] / total;
+    drawRows(x, T, s, p.rows, drawPanel(x, T, s, sx, py, sw, ph, titleOf(p), noteOf(p)), false);
+    py += ph + gap;
+  });
 }
 
 // ---- Page --------------------------------------------------------------
 
-function theme() {
-  const t = storeGet("barton-theme", "auto");
-  if (t !== "auto") return t;
-  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+function paint(c, w, h, T, stacked, dpr) {
+  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c._dpr = dpr;
+  drawDashboard(c, w, h, T, stacked);
 }
 
 function render() {
-  const t = theme();
+  const t = themeName(), T = THEMES[t];
   document.documentElement.dataset.theme = t;
-  for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.v === storeGet("barton-theme", "auto")));
-  if (!DATA) { $("cards").innerHTML = '<div class="empty">No data. Run <code>barton report</code> to build this page.</div>'; return; }
-  $("title").textContent = `Barton results · ${repoName()}`;
-  document.title = `Barton results · ${repoName()}`;
+  for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.v === t));
   $("hide").setAttribute("aria-pressed", String(hidden()));
-  $("sub").textContent = `${plural((DATA.tasks || []).length, "task")} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
-  const specs = cardSpecs();
-  const box = $("cards"); box.innerHTML = "";
-  if (!specs.length) box.innerHTML = '<div class="empty">No scored runs yet. Ask your agent to continue the Barton run.</div>';
-  for (const s of specs) {
-    const card = document.createElement("div"); card.className = "card";
-    const canvas = drawCard(s, THEMES[t]); canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", `${s.kicker}: ${s.headline}. ${s.sub}`);
-    card.appendChild(canvas);
-    const act = document.createElement("div"); act.className = "actions";
-    const copy = document.createElement("button"); copy.className = "act primary"; copy.textContent = "Copy image";
-    copy.onclick = () => canvas.toBlob(async b => {
-      try { await navigator.clipboard.write([new ClipboardItem({ "image/png": b })]); copy.textContent = "Copied"; }
-      catch (e) { save(b, s.key, t); copy.textContent = "Saved instead"; }
-      setTimeout(() => copy.textContent = "Copy image", 2000);
-    });
-    const dl = document.createElement("button"); dl.className = "act"; dl.textContent = "Save PNG";
-    dl.onclick = () => canvas.toBlob(b => save(b, s.key, t));
-    act.append(copy, dl); card.appendChild(act); box.appendChild(card);
-  }
+  if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
+  document.title = `Barton results · ${repoName()}`;
+  $("meta").textContent = `${plural((DATA.tasks || []).length, "task")} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
+  const c = $("dash"), w = $("wrap").clientWidth - 32;
+  const avail = innerHeight - $("wrap").getBoundingClientRect().top - 16 + scrollY;
+  const stacked = w < 720 || w / avail < 1.2;
+  const P = panelsOf();
+  const h = stacked && P.main ? stackedHeight(w, P) : Math.max(360, Math.min(avail, w / 1.4));
+  c.style.height = h + "px";
+  paint(c, w, h, T, stacked, devicePixelRatio || 1);
+  if (P.main) c.setAttribute("aria-label", `${P.main.headline}. ${P.main.sub}`);
   renderTable();
 }
 
-function save(blob, key, t) {
+// The image to share: the same dashboard at 1200x630, drawn at twice the resolution.
+function shareImage(cb) {
+  const c = document.createElement("canvas");
+  paint(c, 1200, 630, THEMES[themeName()], false, 2);
+  c.toBlob(cb, "image/png");
+}
+
+function save(blob) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = `barton-${hidden() ? "my-project" : DATA.repo}-${key}-${t}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  a.download = `barton-${hidden() ? "my-project" : DATA.repo}-${themeName()}.png`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function renderTable() {
@@ -460,7 +534,15 @@ $("handle").value = storeGet("barton-handle", "");
 $("handle").addEventListener("input", () => { storeSet("barton-handle", $("handle").value); render(); });
 for (const b of $("theme").children) b.addEventListener("click", () => { storeSet("barton-theme", b.dataset.v); render(); });
 $("hide").addEventListener("click", () => { storeSet("barton-hide", hidden() ? "" : "1"); render(); });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+$("copy").addEventListener("click", () => shareImage(async b => {
+  const btn = $("copy");
+  try { await navigator.clipboard.write([new ClipboardItem({ "image/png": b })]); btn.textContent = "Copied"; }
+  catch (e) { save(b); btn.textContent = "Saved instead"; }
+  setTimeout(() => btn.textContent = "Copy image", 2000);
+}));
+$("save").addEventListener("click", () => shareImage(save));
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 60); });
 render();
 </script>
 </body>

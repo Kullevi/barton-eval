@@ -488,11 +488,11 @@ function render() {
   renderTable();
 }
 
-// The image to share: the dashboard as shown, at least twice the screen's resolution.
+// The image to share: the dashboard as shown, at least twice the screen's resolution and 2400 px wide.
 let view = { w: 1200, h: 600, stacked: false };
 function shareImage(cb) {
   const c = document.createElement("canvas");
-  paint(c, view.w, view.h, THEMES[themeName()], view.stacked, Math.max(2, devicePixelRatio || 1));
+  paint(c, view.w, view.h, THEMES[themeName()], view.stacked, Math.max(2, devicePixelRatio || 1, 2400 / view.w));
   c.toBlob(cb, "image/png");
 }
 

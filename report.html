@@ -66,6 +66,7 @@ footer a { color:var(--text); font-weight:600; text-decoration:none; }
     </div>
     <div class="tools">
       <label>Your name on the cards <input id="handle" placeholder="@yourname"></label>
+      <span class="seg"><button id="hide" aria-pressed="false" title="Show 'My project' instead of the project name, and leave out task descriptions">Hide names</button></span>
       <span class="seg" id="theme" role="group" aria-label="Card theme">
         <button data-v="auto">Auto</button><button data-v="light">Light</button><button data-v="dark">Dark</button>
       </span>
@@ -92,6 +93,9 @@ const HARNESS = { claude: "Claude Code", codex: "Codex CLI" };
 const LOGO_MARK = new Path2D("M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z");
 const LOGO_HOUSE = new Path2D("M37,89 H11 V45 L50,9 L89,45 V89 H63");
 const $ = (id) => document.getElementById(id);
+// With Hide names on, nothing on the page or the cards names the project or describes its code.
+const hidden = () => storeGet("barton-hide", "") === "1";
+const repoName = () => hidden() ? "My project" : DATA.repo;
 
 function storeGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
 function storeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -177,7 +181,7 @@ function scoreSpec(kind, color) {
   let headline, sub;
   if (list.length === 1) {
     headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = write ? `Coding tasks from ${DATA.repo}, ${top.runs > 1 ? "over " + plural(top.runs, "run") : "one run"}.` : "Code reviews of real changes, each with one planted bug.";
+    sub = write ? `Coding tasks from ${repoName()}, ${top.runs > 1 ? "over " + plural(top.runs, "run") : "one run"}.` : "Code reviews of real changes, each with one planted bug.";
   } else if (ceiling) {
     headline = n === 1 ? `${every} ${verb} the ${write ? "task" : "planted bug"}`
       : all ? `${every} ${verb} all ${noun}` : `${every} ${verb} nearly all ${noun}`;
@@ -187,7 +191,7 @@ function scoreSpec(kind, color) {
     sub = `${top.label} ${verb} ${top.hits} of ${top.n}, ${list[1].label} ${list[1].hits} of ${list[1].n}: within what ${noun} can show.`;
   } else {
     headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = `Ahead of ${list[1].label} with ${list[1].hits} of ${list[1].n}, on ${write ? "coding tasks" : "code reviews"} from ${DATA.repo}.`;
+    sub = `Ahead of ${list[1].label} with ${list[1].hits} of ${list[1].n}, on ${write ? "coding tasks" : "code reviews"} from ${repoName()}.`;
   }
   const judges = judgesOf(kind);
   const stats = [
@@ -299,7 +303,7 @@ function drawCard(spec, T) {
   setFont(x, 16, 650); x.fillStyle = T.text; x.fillText("Barton-eval", M + 44, 62);
   const handle = $("handle").value.trim();
   setFont(x, 14, 400); x.fillStyle = T.muted; x.textAlign = "right";
-  x.fillText(ellipsize(x, handle ? `${handle} · ${DATA.repo}` : DATA.repo, 480), W - M, 62); x.textAlign = "left";
+  x.fillText(ellipsize(x, handle ? `${handle} · ${repoName()}` : repoName(), 480), W - M, 62); x.textAlign = "left";
 
   // Kicker, headline result and one supporting sentence.
   setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText(spec.kicker.toUpperCase(), M, 128);
@@ -391,8 +395,9 @@ function render() {
   document.documentElement.dataset.theme = t;
   for (const b of $("theme").children) b.setAttribute("aria-pressed", String(b.dataset.v === storeGet("barton-theme", "auto")));
   if (!DATA) { $("cards").innerHTML = '<div class="empty">No data. Run <code>barton report</code> to build this page.</div>'; return; }
-  $("title").textContent = `Barton results · ${DATA.repo}`;
-  document.title = `Barton results · ${DATA.repo}`;
+  $("title").textContent = `Barton results · ${repoName()}`;
+  document.title = `Barton results · ${repoName()}`;
+  $("hide").setAttribute("aria-pressed", String(hidden()));
   $("sub").textContent = `${plural((DATA.tasks || []).length, "task")} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
   const specs = cardSpecs();
   const box = $("cards"); box.innerHTML = "";
@@ -418,7 +423,7 @@ function render() {
 
 function save(blob, key, t) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = `barton-${DATA.repo}-${key}-${t}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  a.download = `barton-${hidden() ? "my-project" : DATA.repo}-${key}-${t}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 function renderTable() {
@@ -431,7 +436,7 @@ function renderTable() {
   for (const task of DATA.tasks || []) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.textContent = `${task.id}: ${(task.prompt || "").slice(0, 160)}${(task.prompt || "").length > 160 ? "…" : ""}`;
+    td.textContent = hidden() ? task.id : `${task.id}: ${(task.prompt || "").slice(0, 160)}${(task.prompt || "").length > 160 ? "…" : ""}`;
     const meta = document.createElement("small");
     meta.textContent = `${task.kind === "write" ? "coding" : "review"} · ${task.source}${task.check ? " · checked" : ""}`;
     td.appendChild(meta); tr.appendChild(td);
@@ -442,7 +447,7 @@ function renderTable() {
       rs.forEach((r, i) => {
         const span = document.createElement("span");
         span.className = ["solved", "found"].includes(r.outcome) ? "ok" : ["pending", "error"].includes(r.outcome) ? "wait" : "no";
-        span.textContent = (i ? " " : "") + r.outcome; span.title = r.judge_note || r.error || "";
+        span.textContent = (i ? " " : "") + r.outcome; span.title = hidden() ? "" : r.judge_note || r.error || "";
         cell.appendChild(span);
       });
       tr.appendChild(cell);
@@ -454,6 +459,7 @@ function renderTable() {
 $("handle").value = storeGet("barton-handle", "");
 $("handle").addEventListener("input", () => { storeSet("barton-handle", $("handle").value); render(); });
 for (const b of $("theme").children) b.addEventListener("click", () => { storeSet("barton-theme", b.dataset.v); render(); });
+$("hide").addEventListener("click", () => { storeSet("barton-hide", hidden() ? "" : "1"); render(); });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 render();
 </script>

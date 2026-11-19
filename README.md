@@ -49,7 +49,9 @@ on exactly the same tasks.
   in it. Did the model find it?
 - **Time and cost** per model and thinking level.
 - **Cards** in the size link previews use (1200 × 630), light or dark, ready
-  to paste into a post, with your name on them if you like.
+  to paste into a post, with your name on them if you like. **Hide names**
+  shows "My project" instead of the project name and leaves out task
+  descriptions, for a card or screenshot you share.
   Each card prints the number of tasks, how they were judged and by whom, and
   says so plainly when the models were too close to call or the tasks too easy.
 - **History.** Results stay in your project (`.barton/`, never committed), so a

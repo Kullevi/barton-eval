@@ -177,7 +177,7 @@ function scoreSpec(kind, color) {
   let headline, sub;
   if (list.length === 1) {
     headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = write ? `Coding tasks from my own repo, ${top.runs > 1 ? "over " + plural(top.runs, "run") : "one run"}.` : "Code reviews of real changes, each with one planted bug.";
+    sub = write ? `Coding tasks from ${DATA.repo}, ${top.runs > 1 ? "over " + plural(top.runs, "run") : "one run"}.` : "Code reviews of real changes, each with one planted bug.";
   } else if (ceiling) {
     headline = n === 1 ? `${every} ${verb} the ${write ? "task" : "planted bug"}`
       : all ? `${every} ${verb} all ${noun}` : `${every} ${verb} nearly all ${noun}`;
@@ -187,7 +187,7 @@ function scoreSpec(kind, color) {
     sub = `${top.label} ${verb} ${top.hits} of ${top.n}, ${list[1].label} ${list[1].hits} of ${list[1].n}: within what ${noun} can show.`;
   } else {
     headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = `Ahead of ${list[1].label} with ${list[1].hits} of ${list[1].n}, on ${write ? "coding tasks" : "code reviews"} from my own repo.`;
+    sub = `Ahead of ${list[1].label} with ${list[1].hits} of ${list[1].n}, on ${write ? "coding tasks" : "code reviews"} from ${DATA.repo}.`;
   }
   const judges = judgesOf(kind);
   const stats = [
@@ -299,7 +299,7 @@ function drawCard(spec, T) {
   setFont(x, 16, 650); x.fillStyle = T.text; x.fillText("Barton-eval", M + 44, 62);
   const handle = $("handle").value.trim();
   setFont(x, 14, 400); x.fillStyle = T.muted; x.textAlign = "right";
-  x.fillText(ellipsize(x, handle ? `${handle}'s codebase` : "My own codebase", 480), W - M, 62); x.textAlign = "left";
+  x.fillText(ellipsize(x, handle ? `${handle} · ${DATA.repo}` : DATA.repo, 480), W - M, 62); x.textAlign = "left";
 
   // Kicker, headline result and one supporting sentence.
   setFont(x, 12, 600, 0.72); x.fillStyle = T.muted; x.fillText(spec.kicker.toUpperCase(), M, 128);

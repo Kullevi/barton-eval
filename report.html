@@ -117,9 +117,11 @@ function drawCard(spec) {
       x.fillStyle = "#5b5b63"; x.font = font(400, 26); x.fillText(r.effort, pad, y + 32);
       if (spec.segments) {
         // One segment per task attempt, so the sample size is visible.
-        const n = r.n, sg = Math.min(6, 160 / n), w = (barMax - sg * (n - 1)) / n;
+        // r.segs (quality card): "w" win, "t" tie, "l" loss; otherwise hits first.
+        const segs = r.segs || Array.from({ length: r.n }, (_, i) => (i < r.hits ? "w" : "l"));
+        const n = segs.length, sg = Math.min(6, 160 / n), w = (barMax - sg * (n - 1)) / n;
         for (let i = 0; i < n; i++) {
-          x.fillStyle = i < r.hits ? g.color : "#e7e5df";
+          x.fillStyle = segs[i] === "w" ? g.color : segs[i] === "t" ? "#bdbab2" : "#e7e5df";
           roundRect(x, barX + i * (w + sg), y + 6, w, rowH - 8, 6); x.fill();
         }
       } else {
@@ -166,6 +168,29 @@ function methodText(groups) {
   return [...m].map(x => names[x] || x).join(", ");
 }
 
+// Blind A/B preferences where both solutions passed, counted only when both orders agree.
+function qualitySpec(groups) {
+  const key = (g, r) => `${g.model}|${g.harness}|${r.effort}`;
+  const qgroups = groups.map(g => ({ ...g, list: g.list.map(r => {
+    const k = key(g, r), segs = [];
+    for (const q of DATA.quality) {
+      if (q.a !== k && q.b !== k) continue;
+      segs.push(q.winner === null ? "t" : q.winner === k ? "w" : "l");
+    }
+    segs.sort((a, b) => "wtl".indexOf(a) - "wtl".indexOf(b));
+    return { ...r, segs, w: segs.filter(s => s === "w").length, t: segs.filter(s => s === "t").length, l: segs.filter(s => s === "l").length };
+  }).filter(r => r.segs.length) })).filter(g => g.list.length);
+  const n = DATA.quality.length;
+  const judges = new Set((DATA.quality_judges || []));
+  return {
+    key: "write-quality", title: "Better solution when both passed",
+    subtitle: `${plural(n, "head-to-head comparison")} on my repo · one block per comparison · more wins is better`,
+    groups: qgroups, segments: true, value: r => r.w, text: r => `${r.w} won · ${r.t} tie`,
+    foot: [`Blind AI judge${judges.size ? " (" + [...judges].join(", ") + ")" : ""}, shown both solutions in both orders;`,
+      "a win counts only when both orders agree, otherwise it is a tie. Colour: won, grey: tie, light: lost."],
+  };
+}
+
 function cardSpecs() {
   const specs = [];
   for (const kind of ["write", "review"]) {
@@ -175,7 +200,11 @@ function cardSpecs() {
     const n = Math.max(...groups.flatMap(g => g.list.map(r => r.tasks.size)));
     const attempts = Math.max(...groups.flatMap(g => g.list.map(r => r.attempts.size)));
     const runs = attempts === 1 ? "One run per setting" : `${attempts} runs per setting`;
-    const close = closeCall(groups) ? "Too close to call at this sample size. " : "";
+    // When every setting solves (nearly) everything, the tasks cannot tell models apart.
+    const ceiling = groups.length + groups.reduce((a, g) => a + g.list.length, 0) > 2
+      && groups.every(g => g.list.every(r => r.hits / r.n >= 0.9));
+    const close = ceiling ? "Every model solved nearly everything: these tasks were too easy to tell them apart. "
+      : closeCall(groups) ? "Too close to call at this sample size. " : "";
     const what = kind === "write" ? "tasks solved" : "planted bugs found";
     const judges = new Set((DATA.results || []).filter(r => r.kind === kind && r.judge_model).map(r => r.judge_model));
     specs.push({
@@ -189,6 +218,7 @@ function cardSpecs() {
         `${runs}. ${kind === "review" ? "Other findings, not yet confirmed: " + groups.reduce((a, g) => a + g.list.reduce((b, r) => b + r.other, 0), 0) + ". " : ""}${DATA.public ? "Public repo: models may have seen this code in training." : ""}`.trim(),
       ].filter(Boolean),
     });
+    if (kind === "write" && (DATA.quality || []).length) specs.push(qualitySpec(groups));
     const timeMax = Math.max(...groups.flatMap(g => g.list.map(r => r.secs / r.attempts.size)));
     specs.push({
       key: kind + "-time", title: `Time for ${kind === "write" ? "the coding tasks" : "the reviews"}`,

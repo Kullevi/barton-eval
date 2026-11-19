@@ -64,7 +64,7 @@ class RepoTest(unittest.TestCase):
 
     def test_mine_finds_commit_with_tests(self):
         d = call("mine", "--repo", str(self.repo))
-        top = d["candidates"][0]
+        top = d["small"][0]
         self.assertEqual(top["subject"], "Add clamp")
         self.assertTrue(top["has_tests"])
         self.assertIn("tests/test_calc.py", top["test_files"])
@@ -148,7 +148,44 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(barton.latest_rows(b.results())[0]["outcome"], "solved")
 
 
+class QualityTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        repo = Path(self.tmp.name)
+        sh(repo, "init", "-q", "-b", "main")
+        self.b = barton.Barton(repo)
+        self.b.save_config({"tasks": [{"id": "t1", "kind": "write"}]})
+        for run, model in (("x", "m1"), ("y", "m2")):
+            self.b.append_result({"run": run, "task": "t1", "kind": "write", "model": model,
+                                  "harness": "codex", "effort": "low", "outcome": "solved",
+                                  "attempt": 1})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def prefer(self, first, second, choice):
+        self.b.init()
+        with (self.b.dir / "prefs.jsonl").open("a") as f:
+            f.write(json.dumps({"task": "t1", "first": first, "second": second,
+                                "choice": choice, "judge_model": "j"}) + "\n")
+
+    def test_win_needs_both_orders_to_agree(self):
+        self.prefer("x", "y", "first")
+        self.assertEqual(barton.quality(self.b), [])  # one order only
+        self.prefer("y", "x", "second")
+        self.assertEqual(barton.quality(self.b)[0]["winner"], "m1|codex|low")
+
+    def test_disagreeing_orders_are_a_tie(self):
+        self.prefer("x", "y", "first")
+        self.prefer("y", "x", "first")  # position bias: always the first
+        self.assertIsNone(barton.quality(self.b)[0]["winner"])
+
+
 class ParseTest(unittest.TestCase):
+    def test_size_buckets(self):
+        self.assertEqual([barton.size_of(n) for n in (3, 24, 25, 150, 151)],
+                         ["small", "small", "medium", "medium", "large"])
+
     def test_claude_json(self):
         out = json.dumps({"type": "result", "subtype": "success", "is_error": False,
                           "total_cost_usd": 0.12, "usage": {"input_tokens": 10,

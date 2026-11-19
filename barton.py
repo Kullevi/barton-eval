@@ -46,6 +46,16 @@ CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb",
 
 # ---------------------------------------------------------------- helpers
 
+
+def sp_run(cmd, **kw):
+    """Every subprocess goes through here. On Windows it gets a hidden console, which
+    its children (git, cmd, the model CLIs, test runners) share, so no terminal
+    window opens; stdin is closed unless given."""
+    kw.setdefault("stdin", subprocess.DEVNULL)
+    if os.name == "nt":
+        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+    return subprocess.run(cmd, **kw)
+
 def out(obj) -> None:
     print(json.dumps(obj, indent=2, ensure_ascii=False))
 
@@ -60,7 +70,7 @@ def now() -> str:
 
 
 def git(repo: Path, *args: str, check: bool = True, binary: bool = False):
-    p = subprocess.run(["git", "-C", str(repo), *GIT_ID, *args],
+    p = sp_run(["git", "-C", str(repo), *GIT_ID, *args],
                        capture_output=True, stdin=subprocess.DEVNULL)
     if check and p.returncode != 0:
         fail(f"git {' '.join(args)} failed: {p.stderr.decode(errors='replace').strip()}")
@@ -77,7 +87,7 @@ def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
     t0 = time.time()
     full_env = {**os.environ, **env} if env else None
     try:
-        p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, shell=shell, env=full_env,
+        p = sp_run(cmd, cwd=str(cwd), capture_output=True, shell=shell, env=full_env,
                            stdin=subprocess.DEVNULL, timeout=timeout)
         return (p.returncode, p.stdout.decode("utf-8", "replace"),
                 p.stderr.decode("utf-8", "replace"), time.time() - t0, False)
@@ -148,6 +158,12 @@ class Barton:
                 rows.append(json.loads(line))
         return rows
 
+    def prefs(self) -> list[dict]:
+        p = self.dir / "prefs.jsonl"
+        if not p.exists():
+            return []
+        return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+
     def append_result(self, row: dict) -> None:
         self.init()
         with (self.dir / "results.jsonl").open("a", encoding="utf-8") as f:
@@ -162,13 +178,13 @@ def cmd_check(args) -> None:
                   "platform": sys.platform, "git": None, "claude": None, "codex": None}
     g = which("git")
     if g:
-        info["git"] = subprocess.run([g, "--version"], capture_output=True,
+        info["git"] = sp_run([g, "--version"], capture_output=True,
                                      text=True).stdout.strip()
     c = which("claude")
     if c:
-        v = subprocess.run([c, "--version"], capture_output=True, text=True,
+        v = sp_run([c, "--version"], capture_output=True, text=True,
                            stdin=subprocess.DEVNULL).stdout.strip()
-        st = subprocess.run([c, "auth", "status"], capture_output=True, text=True,
+        st = sp_run([c, "auth", "status"], capture_output=True, text=True,
                             stdin=subprocess.DEVNULL)
         try:
             s = json.loads(st.stdout)
@@ -178,9 +194,9 @@ def cmd_check(args) -> None:
             info["claude"] = {"version": v, "logged_in": None}
     x = which("codex")
     if x:
-        v = subprocess.run([x, "--version"], capture_output=True, text=True,
+        v = sp_run([x, "--version"], capture_output=True, text=True,
                            stdin=subprocess.DEVNULL).stdout.strip()
-        st = subprocess.run([x, "login", "status"], capture_output=True, text=True,
+        st = sp_run([x, "login", "status"], capture_output=True, text=True,
                             stdin=subprocess.DEVNULL)
         text = (st.stdout + st.stderr).strip()
         info["codex"] = {"version": v, "logged_in": st.returncode == 0 and "Logged in" in text,
@@ -198,8 +214,13 @@ def is_code(path: str) -> bool:
     return Path(path).suffix.lower() in CODE_EXT
 
 
+def size_of(code_lines: int) -> str:
+    """Rough difficulty from the changed lines of non-test code."""
+    return "small" if code_lines < 25 else "medium" if code_lines <= 150 else "large"
+
+
 def cmd_mine(args) -> None:
-    """List commits that could become tasks, smallest self-contained first."""
+    """List commits that could become tasks, grouped by size so a run can mix difficulty."""
     b = Barton(Path(args.repo))
     log = git(b.repo, "log", "--first-parent", "--no-merges", f"-n{args.limit}",
               "--numstat", "--format=@@%H%x09%aI%x09%s")
@@ -223,12 +244,22 @@ def cmd_mine(args) -> None:
         if not git(b.repo, "rev-parse", "--verify", "-q", c["sha"] + "^", check=False).strip():
             continue  # root commit: no "before" state
         body = git(b.repo, "log", "-1", "--format=%b", c["sha"]).strip()
+        code_lines = sum(n for p, n in c["files"] if p in code)
         cands.append({"sha": c["sha"][:12], "date": c["date"], "subject": c["subject"],
                       "body": body[:600], "code_files": code, "test_files": tests,
-                      "lines_changed": lines, "has_tests": bool(tests)})
-    cands.sort(key=lambda c: (not c["has_tests"], c["lines_changed"]))
+                      "code_lines": code_lines, "lines_changed": lines,
+                      "has_tests": bool(tests)})
+    groups: dict[str, list] = {"small": [], "medium": [], "large": []}
+    for c in cands:  # git log order: newest first, so recent work comes first
+        groups[size_of(c["code_lines"])].append(c)
+    for g in groups.values():
+        g.sort(key=lambda c: not c["has_tests"])  # stable: keeps newest first
+    each = max(1, args.show // 3)
     out({"repo": str(b.repo), "commits_scanned": len(commits),
-         "candidates": cands[: args.show]})
+         "counts": {k: len(v) for k, v in groups.items()},
+         "hint": "Mix sizes: mostly medium, some large, a few small. Small tasks rarely "
+                 "separate strong models.",
+         **{k: v[:each] for k, v in groups.items()}})
 
 
 # ---------------------------------------------------------------- task folders
@@ -250,7 +281,7 @@ def link_dir(src: Path, dst: Path) -> None:
     if dst.exists() or not src.exists():
         return
     if os.name == "nt":
-        subprocess.run(["cmd", "/c", "mklink", "/J", str(dst), str(src)],
+        sp_run(["cmd", "/c", "mklink", "/J", str(dst), str(src)],
                        capture_output=True, stdin=subprocess.DEVNULL)
     else:
         os.symlink(src, dst, target_is_directory=True)
@@ -309,7 +340,7 @@ def remove_tree(p: Path) -> None:
         os.chmod(path, 0o700)
         func(path)
     if os.name == "nt":  # rd /s removes junctions themselves, not their targets
-        subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", str(p)], capture_output=True)
+        sp_run(["cmd", "/c", "rmdir", "/s", "/q", str(p)], capture_output=True)
     if p.exists():
         shutil.rmtree(p, onerror=onerror)
 
@@ -319,7 +350,7 @@ def hidden_files(b: Barton, task: dict) -> dict[str, bytes | None]:
     out_files: dict[str, bytes | None] = {}
     check = task.get("check", {})
     for rel in check.get("files", []):
-        p = subprocess.run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
+        p = sp_run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
                            capture_output=True, stdin=subprocess.DEVNULL)
         out_files[rel] = p.stdout if p.returncode == 0 else None
     # A check the test leader wrote itself, for projects without tests.
@@ -496,7 +527,7 @@ def cmd_plant(args) -> None:
 def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
     files: dict[str, bytes | None] = {}
     for rel in git(b.repo, "diff", "--name-only", task["base"], task["reference"]).splitlines():
-        p = subprocess.run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
+        p = sp_run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
                            capture_output=True, stdin=subprocess.DEVNULL)
         files[rel] = p.stdout if p.returncode == 0 else None
     pl = task["plant"]
@@ -658,7 +689,7 @@ def cmd_run(args) -> None:
         return
     if task["kind"] == "write":
         git(folder, "add", "-A")
-        patch = git(folder, "diff", "--cached", start_head)
+        patch = git(folder, "diff", "--cached", "--ignore-cr-at-eol", start_head)  # Windows tools rewrite line endings
         (run_dir / "diff.patch").write_text(patch, encoding="utf-8")
         row["lines_changed"] = sum(1 for l in patch.splitlines()
                                    if l[:1] in "+-" and l[:3] not in ("+++", "---"))
@@ -720,7 +751,7 @@ _versions: dict[str, str] = {}
 def cli_version(harness: str) -> str | None:
     if harness not in _versions:
         exe = which(harness)
-        _versions[harness] = (subprocess.run([exe, "--version"], capture_output=True, text=True,
+        _versions[harness] = (sp_run([exe, "--version"], capture_output=True, text=True,
                                              stdin=subprocess.DEVNULL).stdout.strip()
                               if exe else None)
     return _versions[harness]
@@ -798,6 +829,93 @@ def cmd_verdict(args) -> None:
     out({"recorded": run, "outcome": args.outcome})
 
 
+# ---------------------------------------------------------------- quality when both solved
+
+def setting(r: dict) -> str:
+    return f"{r['model']}|{r['harness']}|{r.get('effort') or 'default'}"
+
+
+def cmd_pairs(args) -> None:
+    """Blind A/B bundles for every pair of solved solutions from different settings.
+
+    Each pair is written in both orders; a preference counts only when both
+    orders agree, which cancels the judge's bias toward the first or second."""
+    b = Barton(Path(args.repo))
+    task = b.task(args.task)
+    if task["kind"] != "write":
+        fail("Quality comparison is for coding tasks.")
+    solved = [r for r in current_rows(b) if r["task"] == task["id"] and r["outcome"] == "solved"]
+    by_setting: dict[str, dict] = {}
+    for r in sorted(solved, key=lambda r: r["attempt"]):
+        by_setting.setdefault(setting(r), r)  # one solution per setting: its first attempt
+    runs = list(by_setting.values())
+    done = {(p["first"], p["second"]) for p in b.prefs() if p["task"] == task["id"]}
+    pdir = b.dir / "pairs"
+    pdir.mkdir(parents=True, exist_ok=True)
+    labels = json.loads((pdir / "labels.json").read_text()) if (pdir / "labels.json").exists() else {}
+    written = []
+    ref = git(b.repo, "diff", task["base"], task["reference"]) if task.get("reference") else ""
+    for i in range(len(runs)):
+        for j in range(i + 1, len(runs)):
+            for first, second in ((runs[i], runs[j]), (runs[j], runs[i])):
+                if (first["run"], second["run"]) in done:
+                    continue
+                pid = f"{task['id']}-{os.urandom(3).hex()}"
+                labels[pid] = {"task": task["id"], "first": first["run"], "second": second["run"]}
+                parts = [f"# Task\n\n{task['prompt']}\n",
+                         "Both solutions below pass the project's checks. Decide which is the "
+                         "better change to merge: correct in cases the checks may miss, simpler, "
+                         "easier to maintain, and in the style of the surrounding code. Size is "
+                         "not a merit in itself. Answer `first`, `second` or `tie`.\n"]
+                if ref:
+                    parts.append("# The project author's own change (for context; not the "
+                                 f"answer key)\n\n```diff\n{ref[:40000]}\n```\n")
+                for title, r in (("First", first), ("Second", second)):
+                    patch = (b.dir / "runs" / r["run"] / "diff.patch").read_text(encoding="utf-8")
+                    parts.append(f"# {title} solution\n\n```diff\n"
+                                 f"{anonymize(patch, runs)[:60000]}\n```\n")
+                (pdir / f"{pid}.md").write_text("\n".join(parts), encoding="utf-8")
+                written.append({"pair": pid, "bundle": str(pdir / f"{pid}.md")})
+    (pdir / "labels.json").write_text(json.dumps(labels, indent=1), encoding="utf-8")
+    out({"task": task["id"], "settings": len(runs), "bundles": written,
+         "note": "Judge each bundle separately and blind, then record `barton prefer`."})
+
+
+def cmd_prefer(args) -> None:
+    b = Barton(Path(args.repo))
+    labels = json.loads((b.dir / "pairs" / "labels.json").read_text(encoding="utf-8"))
+    pair = labels.get(args.pair)
+    if not pair:
+        fail(f"No pair '{args.pair}'.")
+    b.init()
+    with (b.dir / "prefs.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps({**pair, "pair": args.pair, "choice": args.choice,
+                            "judge_model": args.judge_model, "note": args.note,
+                            "at": now()}, ensure_ascii=False) + "\n")
+    out({"recorded": args.pair, "choice": args.choice})
+
+
+def quality(b: Barton) -> list[dict]:
+    """Wins, ties and losses per setting from preferences that agree in both orders."""
+    rows = {r["run"]: r for r in current_rows(b)}
+    votes: dict[tuple, dict] = {}
+    for p in b.prefs():
+        if p["first"] not in rows or p["second"] not in rows:
+            continue
+        key = tuple(sorted((p["first"], p["second"])))
+        winner = {"first": p["first"], "second": p["second"]}.get(p["choice"])
+        votes.setdefault(key, {})[(p["first"], p["second"])] = winner
+    out_rows = []
+    for (x, y), v in votes.items():
+        if len(v) < 2:
+            continue  # one order only: not yet a result
+        a, c = v.values()
+        winner = a if a == c else None
+        out_rows.append({"task": rows[x]["task"], "a": setting(rows[x]), "b": setting(rows[y]),
+                         "winner": setting(rows[winner]) if winner else None})
+    return out_rows
+
+
 # ---------------------------------------------------------------- status and report
 
 def latest_rows(rows: list[dict]) -> list[dict]:
@@ -846,7 +964,8 @@ def cmd_report(args) -> None:
             "public": cfg.get("public"), "tasks": [
                 {k: t.get(k) for k in ("id", "kind", "source", "prompt")}
                 | {"check": bool(t.get("check"))} for t in cfg.get("tasks", [])],
-            "results": current_rows(b)}
+            "results": current_rows(b), "quality": quality(b),
+            "quality_judges": sorted({p["judge_model"] for p in b.prefs()})}
     tpl = (HERE / "report.html").read_text(encoding="utf-8")
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     page = tpl.replace("/*BARTON_DATA*/null", blob)
@@ -886,9 +1005,9 @@ def main(argv: list[str] | None = None) -> None:
     p("check", cmd_check, "what is installed and logged in")
     sp = p("mine", cmd_mine, "list commits that could become tasks")
     sp.add_argument("--limit", type=int, default=400)
-    sp.add_argument("--max-files", type=int, default=6)
-    sp.add_argument("--max-lines", type=int, default=300)
-    sp.add_argument("--show", type=int, default=40)
+    sp.add_argument("--max-files", type=int, default=15)
+    sp.add_argument("--max-lines", type=int, default=1000)
+    sp.add_argument("--show", type=int, default=45)
     sp = p("config", cmd_config, "project settings for task folders")
     sp.add_argument("--setup", help="command run once in each task folder, e.g. 'npm ci'")
     sp.add_argument("--link", nargs="*", help="folders linked from the repo, e.g. node_modules")
@@ -922,6 +1041,13 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("task")
     sp.add_argument("label")
     sp.add_argument("outcome", choices=["solved", "failed", "found", "missed"])
+    sp.add_argument("--judge-model", required=True)
+    sp.add_argument("--note", default="")
+    sp = p("pairs", cmd_pairs, "blind A/B bundles of solved solutions to one task")
+    sp.add_argument("task")
+    sp = p("prefer", cmd_prefer, "record which solution in a pair is better")
+    sp.add_argument("pair")
+    sp.add_argument("choice", choices=["first", "second", "tie"])
     sp.add_argument("--judge-model", required=True)
     sp.add_argument("--note", default="")
     p("status", cmd_status, "progress and scores so far")

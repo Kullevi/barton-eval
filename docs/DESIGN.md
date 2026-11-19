@@ -40,6 +40,25 @@ quick to run, and honest about being small.
   (SZZ) was rejected for v0: the research on it reports high noise, and
   vibe-coded histories rarely mark fixes.
 
+## Telling models apart
+
+The first trial on a small library showed the failure to avoid: two models
+solved every small task, so the run said "equal" when it only meant "too
+easy". Three changes address it:
+
+- **Difficulty mix.** `mine` groups candidates by changed code lines (small
+  under 25, medium up to 150, large above) and the test leader picks mostly
+  medium, some large, a few small.
+- **Quality when both passed.** A blind A/B judgment of solutions that both
+  pass, in both orders; a win counts only when both orders agree (the standard
+  defence against position bias in pairwise LLM judging, as in MT-Bench and
+  Chatbot Arena practice). This is the one place Barton compares models with
+  each other, so it is shown on its own card and never changes the solved
+  counts, which stay absolute.
+- **Ceiling warning.** When every setting solves at least 90 % of the tasks,
+  the card says the tasks were too easy instead of "too close to call", and
+  the test leader adds harder tasks.
+
 ## Fair runs
 
 - **No future leakage.** Each run gets a fresh git repository holding only the
@@ -54,6 +73,11 @@ quick to run, and honest about being small.
 - **Unattended but contained.** Claude runs with `--permission-mode dontAsk`
   and a fixed tool list; Codex with its `workspace-write` sandbox (on Windows
   `windows.sandbox="unelevated"`, without which every command is refused).
+- **No windows on Windows.** A run starts hundreds of git, shell, CLI and test
+  processes. Every one goes through `sp_run`, which on Windows gives it a
+  hidden console (`CREATE_NO_WINDOW`) that its own children share, so no
+  terminal window flashes up while the user works. Keep it that way: never
+  call `subprocess` directly.
 - **Errors are not scores.** A run that could not happen (login, model name,
   sandbox, timeout) is recorded as `error`, left out of every chart, and rerun.
 

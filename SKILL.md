@@ -76,9 +76,12 @@ Look at the repository yourself and decide how its code and tests run.
 
 ## 4. Choose tasks
 
-Run `barton mine`. It lists small commits that changed code, those with tests
-first. For each task you keep, write a JSON file and run
-`barton task-add <file>`:
+Run `barton mine`. It lists commits that changed code, grouped as `small`,
+`medium` and `large` by how much code they changed, newest and those with tests
+first. **Mix difficulty**: mostly medium, some large, a few small. Small tasks
+are quick, but strong models solve nearly all of them, so a run of only small
+tasks cannot tell models apart. For each task you keep, write a JSON file and
+run `barton task-add <file>`:
 
 ```json
 {"id": "t1", "kind": "write", "base": "<sha>^", "reference": "<sha>",
@@ -155,10 +158,27 @@ record each verdict:
 
 `barton verdict <task> <label> solved|failed|found|missed --judge-model <judge model> --note "<one sentence>"`
 
+**Quality when both passed.** Tests say only pass or fail. For every coding
+task that two or more settings solved, run `barton pairs <task>`: it writes one
+blind A/B bundle per pair of solutions, each pair in both orders. Judge **each
+bundle with a fresh judge that sees only that bundle** (a new subagent or a new
+`codex exec` per bundle; a judge that sees several bundles compares across them
+and is no longer independent). Record each answer:
+
+`barton prefer <pair> first|second|tie --judge-model <judge model> --note "<one sentence>"`
+
+A win counts only when both orders agree; otherwise it is a tie, which cancels
+the judge's habit of favouring the first or the second answer.
+
+**Too easy?** If every model solved nearly every task, the run says little:
+add a few harder tasks (larger commits, or ones touching several parts of the
+code) and run those too, before you show the result.
+
 ## 7. Show the result
 
 Run `barton report`. It opens a page in the browser with ready-made cards:
-tasks solved, planted bugs found, time and cost per model and effort level.
+tasks solved, better solution when both passed, planted bugs found, time and
+cost per model and effort level.
 Tell the user in a few sentences what the result says about *their* code,
 including where models differed, and that:
 

@@ -45,12 +45,18 @@ fix it without making the user type anything:
   not find it yet; do not ask the user to restart anything.
 - **Log in** by starting the login yourself in the background
   (`claude auth login`, `codex login`, or `agy` once, which opens the browser)
-  and telling the user: "A browser tab
-  is opening. Click **Authorize**, then come back here." The browser is usually
-  already signed in to claude.ai or ChatGPT, so it is one click. Run
-  `barton check` again until it shows `logged_in: true`. The desktop apps do not
-  always share their login with the CLI; never copy tokens or credential files
-  between them.
+  and telling the user: "A browser tab is opening. Click **Authorize**, then
+  come back here." Run `barton check` again until it shows `logged_in: true`.
+
+**Sign-ins are one click for the user. This is a hard rule.** You start every
+sign-in yourself and open its page in the user's own browser, where they are
+usually already signed in, so all they do is pick their account or click
+**Authorize**. Never ask the user to open a terminal, type a command, or copy a
+code from one window to another. If a CLI offers a pasted-code flow (often
+because it thinks it runs over SSH), find the flow that returns to the CLI by
+itself (for example start it as a local session) before involving the user.
+Never type a password or code yourself, and never copy tokens or credential
+files between programs or machines.
 
 Once both CLIs work, tell the user once, briefly, as a bonus: they can now ask
 you to hand work to the other assistant (for example "ask Codex to review this"

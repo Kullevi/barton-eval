@@ -251,6 +251,16 @@ computer, for example
 
 ### 4. The model CLIs and logins
 
+**Sign-ins are one click for the user. This is a hard rule.** You start every
+sign-in yourself and open its page in the user's own browser, where they are
+usually already signed in, so all they do is pick their account or click
+**Authorize**. Never ask the user to open a terminal, type a command, or copy a
+code from one window to another. If a CLI offers a pasted-code flow (often
+because it thinks it runs over SSH), find the flow that returns to the CLI by
+itself (for example start it as a local session) before involving the user.
+Never type a password or code yourself, and never copy tokens or credential
+files between programs or machines.
+
 Follow step 1 of `SKILL.md`. Run `barton check` and set up only the CLIs the
 user already uses on this computer (`used_here: true`): install a missing one
 and start its login yourself, so the user only clicks **Authorize** in the

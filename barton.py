@@ -527,8 +527,32 @@ def copy_folder(cfg: dict, src: Path, dest: Path) -> None:
             link_dir(Path(os.path.realpath(src / rel)), dest / rel)
 
 
+def stop_inside(folder: Path) -> None:
+    """Stop every process still working in a task folder. Codex starts each command in a
+    session of its own, so stopping the CLI's process group leaves a type check or test
+    run going; those are found by where they run (Linux /proc)."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return
+    import signal
+    inside = str(folder.resolve()) + os.sep
+    for d in proc.iterdir():
+        if not d.name.isdigit() or int(d.name) == os.getpid():
+            continue
+        try:
+            where = [os.readlink(d / "cwd") + os.sep, os.readlink(d / "exe")]
+        except OSError:
+            continue
+        if any(w.startswith(inside) for w in where):
+            try:
+                os.kill(int(d.name), signal.SIGKILL)
+            except OSError:
+                pass
+
+
 def remove_tree(p: Path) -> None:
     """Delete a task folder without following linked folders into the user's repo."""
+    stop_inside(p)
     def onerror(func, path, _exc):
         # Git's background maintenance can delete its own lock files mid-removal.
         try:

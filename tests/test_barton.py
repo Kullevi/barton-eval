@@ -187,6 +187,18 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(last["outcome"], "error", last)
         self.assertIn("codex-sandbox off", last["error"])
 
+    @unittest.skipUnless(Path("/proc/self/cwd").exists(), "finds processes through /proc")
+    def test_removing_a_task_folder_stops_what_still_runs_in_it(self):
+        # Codex runs each command in a session of its own, outside the CLI's process group.
+        folder = Path(self.tmp.name) / "w" / "task"
+        folder.mkdir(parents=True)
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], cwd=folder,
+                             start_new_session=True)
+        time.sleep(0.5)
+        barton.remove_tree(folder)
+        self.assertIsNotNone(p.wait(timeout=10))
+        self.assertFalse(folder.exists())
+
     def test_plant_flips_a_comparison_and_grading_finds_it(self):
         d = call("plant", "--repo", str(self.repo), "r1", self.fix, "--seed", "1")
         self.assertEqual(d["file"], "calc.py")

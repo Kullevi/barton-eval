@@ -775,12 +775,12 @@ def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prom
         exe = resolve_cli("agy")
         if exe[0].lower().endswith((".cmd", ".bat")):
             fail("Barton needs agy.exe itself, not a .cmd wrapper, to pass the prompt whole.")
-        # The model name is pinned: agy's default "Auto" may pick another model.
-        cmd = exe + ["-p", prompt, "--model", model, "--output-format", "stream-json",
-                     "--dangerously-skip-permissions", "--disable-slash-commands"]
-        if effort:
-            cmd += ["--effort", effort]
-        return cmd
+        # The model name is pinned: agy's default "Auto" may pick another model. agy's
+        # model ids carry the thinking level (gemini-4-argon-medium); Barton records model
+        # and level apart, as for the other CLIs, and joins them here.
+        slug = model if not effort or model.endswith("-" + effort) else f"{model}-{effort}"
+        return exe + ["-p", prompt, "--model", slug, "--output-format", "stream-json",
+                      "--dangerously-skip-permissions", "--disable-slash-commands"]
     fail(f"Unknown harness '{harness}'. Use 'claude', 'codex' or 'agy'.")
 
 

@@ -153,8 +153,9 @@ all at the same time in the background:
 
 `barton run all --harness claude|codex|agy --model <model id> [--effort <level>] [--attempt <n>]`
 
-For `agy`, list the model ids with `agy models`; the thinking level is part of
-the id (for example `gemini-4-argon-medium`), so leave out `--effort`. agy has
+For `agy`, list the model ids with `agy models`. They end in the thinking
+level (`gemini-4-argon-medium`); give Barton the model and the level apart,
+`--model gemini-4-argon --effort medium`, so the cards show them like the others. agy has
 no switch to turn off web search, so Barton counts the model's web and browser
 calls and records them as `web_used`; mention it if any run used the web.
 

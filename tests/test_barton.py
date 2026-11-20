@@ -316,6 +316,9 @@ class PromptTest(unittest.TestCase):
             cmd = barton.harness_cmd("agy", "gemini-4-argon-medium", None, Path("."), text)
         self.assertEqual(cmd[cmd.index("-p") + 1], text)
         self.assertEqual(cmd[cmd.index("--model") + 1], "gemini-4-argon-medium")
+        with unittest.mock.patch.object(barton, "resolve_cli", return_value=["agy.exe"]):
+            cmd = barton.harness_cmd("agy", "gemini-4-argon", "high", Path("."), text)
+        self.assertEqual(cmd[cmd.index("--model") + 1], "gemini-4-argon-high")
         self.assertFalse(barton.prompt_on_stdin("agy"))
         echo = [sys.executable, "-c", "import sys; sys.stdout.write(sys.argv[1])", text]
         self.assertEqual(barton.run_cmd(echo, Path("."), 60)[1].splitlines(), text.splitlines())

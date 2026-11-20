@@ -123,7 +123,7 @@ const byRate = (a, b) => b.hits / b.n - a.hits / a.n || a.secs / a.runs - b.secs
   || EFFORT_ORDER.indexOf(a.effort) - EFFORT_ORDER.indexOf(b.effort);
 
 function costText(s) {
-  if (!s.costKnown) return "";
+  if (!s.costKnown) return "cost unknown";
   return fmtUsd(s.cost / s.runs) + (s.costEst ? " est." : "");
 }
 

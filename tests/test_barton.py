@@ -201,6 +201,15 @@ class RepoTest(unittest.TestCase):
         g = barton.grade_review(task, tmp, tmp, "Line 3 of a.py flips the bound.")
         self.assertEqual((g["outcome"], g["method"]), ("pending", "judge"))
 
+    def test_unknown_cost_stays_unknown_in_status(self):
+        b = barton.Barton(self.repo)
+        b.save_config({"tasks": [{"id": "t0.5", "kind": "write"}, {"id": "tNone", "kind": "write"}]})
+        for cost in (0.5, None):
+            b.append_result({"run": f"r{cost}", "task": f"t{cost}", "kind": "write", "model": "g",
+                             "harness": "agy", "outcome": "solved", "attempt": 1, "seconds": 1,
+                             "cost_usd": cost})
+        self.assertIsNone(call("status", "--repo", str(self.repo))["by_model"]["g (agy, default)"]["cost_usd"])
+
     def test_tasks_with_results_are_frozen(self):
         b = barton.Barton(self.repo)
         b.append_result({"run": "x", "task": "t9", "kind": "write", "model": "m",

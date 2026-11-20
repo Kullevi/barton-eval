@@ -1253,7 +1253,8 @@ def cmd_status(args) -> None:
         s["scored"] += 1
         s["solved_or_found"] += r["outcome"] in ("solved", "found")
         s["seconds"] += r.get("seconds") or 0
-        s["cost_usd"] += r.get("cost_usd") or 0
+        if s["cost_usd"] is not None:  # one run without a cost makes the total unknown, not lower
+            s["cost_usd"] = None if r.get("cost_usd") is None else s["cost_usd"] + r["cost_usd"]
     out({"tasks": [{"id": t["id"], "kind": t["kind"], "source": t.get("source"),
                     "check": bool(t.get("check") or (t.get("plant") or {}).get("check")), "valid": (t.get("validated") or {}).get("ok")}
                    for t in cfg.get("tasks", [])],

@@ -597,6 +597,7 @@ def save_task(b: Barton, task: dict) -> None:
     """Tasks are frozen once a model has run them, so results stay comparable."""
     if any(r["task"] == task["id"] for r in b.results()):
         fail(f"Task '{task['id']}' already has results and cannot change. Use a new id.")
+    task.setdefault("added", now())  # so the test leader can tell when the set grows old
     cfg = b.config()
     cfg["tasks"] = [t for t in cfg.get("tasks", []) if t["id"] != task["id"]] + [task]
     b.save_config(cfg)
@@ -933,8 +934,13 @@ def estimate_cost(model: str, u: dict, day: str | None = None) -> float | None:
 def cmd_run(args) -> None:
     """Run one model on the given tasks (or `all`), several at once, and record each."""
     b = Barton(Path(args.repo))
-    ids = ([t["id"] for t in b.config().get("tasks", [])] if args.tasks == ["all"]
-           else args.tasks)
+    cfg = b.config()
+    if args.tasks == ["all"]:
+        ids = [t["id"] for t in cfg.get("tasks", [])]
+    elif args.tasks == ["quick"]:
+        ids = cfg.get("quick") or fail("No quick set yet. Run `barton quick` first.")
+    else:
+        ids = args.tasks
     tasks = [b.task(i) for i in dict.fromkeys(ids)]
     recorded = b.results()
     todo = []
@@ -947,7 +953,13 @@ def cmd_run(args) -> None:
         else:
             todo.append(task)
 
+    deadline = time.time() + args.budget * 60 if args.budget else None
+
     def one(task: dict) -> str:
+        if deadline and time.time() > deadline:
+            # Out of time: tasks not started yet are left for later, not scored.
+            out({"task": task["id"], "skipped": f"the {args.budget}-minute budget was used up"})
+            return "not started"
         try:
             return run_one(b, task, args)["outcome"]
         except BaseException as e:  # fail() exits; one broken task must not stop the rest
@@ -1312,17 +1324,32 @@ def cmd_status(args) -> None:
     out({"tasks": [{"id": t["id"], "kind": t["kind"], "source": t.get("source"),
                     "check": bool(t.get("check") or (t.get("plant") or {}).get("check")), "valid": (t.get("validated") or {}).get("ok")}
                    for t in cfg.get("tasks", [])],
-         "runs": len(rows), "by_model": summary})
+         "runs": len(rows), "by_model": summary, "quick": cfg.get("quick", []),
+         "task_set": task_age(cfg, rows)})
 
 
 def cmd_report(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
+    ids = set(cfg.get("quick") or []) if args.quick else {t["id"] for t in cfg.get("tasks", [])}
+    if args.quick and not ids:
+        fail("No quick set yet. Run `barton quick` first.")
+    rows = [r for r in current_rows(b) if r["task"] in ids]
+    # Every model is compared on the same tasks: a task some model has no result for
+    # (not run yet, or an error to fix) is left off the cards until it does.
+    done: dict[str, set] = {}
+    for r in rows:
+        if r["outcome"] != "error":
+            done.setdefault(setting(r), set()).add(r["task"])
+    shared = set.intersection(*done.values()) if done else set()
+    left_out = sorted({r["task"] for r in rows} - shared)
+    tasks = [t for t in cfg.get("tasks", []) if t["id"] in shared]
     data = {"repo": b.repo.name, "generated": now(), "barton": VERSION,
-            "public": cfg.get("public"), "tasks": [
-                {k: t.get(k) for k in ("id", "kind", "source", "prompt")}
-                | {"check": bool(t.get("check"))} for t in cfg.get("tasks", [])],
-            "results": current_rows(b), "quality": quality(b),
+            "public": cfg.get("public"), "quick": bool(args.quick), "left_out": left_out,
+            "tasks": [{k: t.get(k) for k in ("id", "kind", "source", "prompt")}
+                      | {"check": bool(t.get("check"))} for t in tasks],
+            "results": [r for r in rows if r["task"] in shared],
+            "quality": [q for q in quality(b) if q.get("task") in shared],
             "quality_judges": sorted({p["judge_model"] for p in b.prefs()})}
     tpl = (HERE / "report.html").read_text(encoding="utf-8")
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
@@ -1332,7 +1359,51 @@ def cmd_report(args) -> None:
     dest.write_text(page, encoding="utf-8")
     if not args.no_open:
         webbrowser.open(dest.as_uri())
-    out({"report": str(dest)})
+    out({"report": str(dest), "tasks": len(tasks),
+         **({"left_out": left_out, "note": "Left out because not every model has a result for "
+             "them yet; run what is missing and make the report again."} if left_out else {})})
+
+
+def cmd_quick(args) -> None:
+    """Choose the quick set: a few tasks that ran fast and still told the models apart.
+
+    The quick set is part of the full set, so a quick run and a later full run share
+    their results instead of doing the work twice."""
+    b = Barton(Path(args.repo))
+    cfg = b.config()
+    rows = [r for r in current_rows(b) if r["outcome"] not in ("error", "pending")]
+    chosen = []
+    for kind, want in (("write", args.coding), ("review", args.reviews)):
+        scored = []
+        for t in cfg.get("tasks", []):
+            if t["kind"] != kind or (kind == "write" and not t.get("check")):
+                continue
+            rs = [r for r in rows if r["task"] == t["id"]]
+            secs = sorted(r["seconds"] for r in rs) or [0]
+            mixed = len({r["outcome"] for r in rs}) > 1  # some models made it and some did not
+            # Tasks that told models apart first, then the fastest; untried tasks keep their order.
+            scored.append((not mixed, secs[len(secs) // 2] if rs else float("inf"), t["id"]))
+        chosen += [tid for _, _, tid in sorted(scored)[:want]]
+    cfg["quick"] = chosen
+    b.save_config(cfg)
+    out({"quick": chosen, "note": "Tasks that told models apart come first, then the fastest. "
+                                  "Run them with `barton run quick ...`."})
+
+
+def task_age(cfg: dict, rows: list[dict]) -> dict:
+    """When the task set was last added to, so a stale set can be refreshed. A task from
+    before Barton recorded this counts from its first result."""
+    first: dict[str, str] = {}
+    for r in rows:
+        if r.get("at"):
+            first[r["task"]] = min(first.get(r["task"], r["at"]), r["at"])
+    added = sorted(t.get("added") or first[t["id"]] for t in cfg.get("tasks", [])
+                   if t.get("added") or t["id"] in first)
+    if not added:
+        return {}
+    newest = dt.datetime.fromisoformat(added[-1])
+    days = (dt.datetime.now(dt.timezone.utc) - newest).days
+    return {"newest_task_added": added[-1], "days_since": days}
 
 
 def cmd_clean(args) -> None:
@@ -1392,7 +1463,7 @@ def main(argv: list[str] | None = None) -> None:
                     help="environment for --check, such as PYTHONPATH=src (repeatable)")
     sp.add_argument("--tries", type=int, default=12)
     sp = p("run", cmd_run, "run one model on tasks, several at once, and record each")
-    sp.add_argument("tasks", nargs="+", help="task ids, or all")
+    sp.add_argument("tasks", nargs="+", help="task ids, all, or quick")
     sp.add_argument("--jobs", type=int, default=JOBS, help="runs at the same time")
     sp.add_argument("--harness", required=True, choices=["claude", "codex", "agy"])
     sp.add_argument("--model", required=True)
@@ -1400,7 +1471,12 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--attempt", type=int, default=1)
     sp.add_argument("--timeout", type=int, default=RUN_TIMEOUT)
     sp.add_argument("--again", action="store_true", help="run even if already recorded")
+    sp.add_argument("--budget", type=int, metavar="MINUTES",
+                    help="start no new task after this many minutes; what ran is kept")
     sp.add_argument("--keep", action="store_true", help="keep the task folder afterwards")
+    sp = p("quick", cmd_quick, "choose the quick set: a few fast tasks that told models apart")
+    sp.add_argument("--coding", type=int, default=8)
+    sp.add_argument("--reviews", type=int, default=4)
     sp = p("blind", cmd_blind, "anonymous bundle of solutions waiting for judgment")
     sp.add_argument("task")
     sp = p("verdict", cmd_verdict, "record a blind verdict")
@@ -1419,6 +1495,7 @@ def main(argv: list[str] | None = None) -> None:
     p("status", cmd_status, "progress and scores so far")
     sp = p("report", cmd_report, "build and open the results page")
     sp.add_argument("--no-open", action="store_true")
+    sp.add_argument("--quick", action="store_true", help="only the quick set, and say so on the cards")
     p("clean", cmd_clean, "remove leftover task folders")
     args = ap.parse_args(argv)
     args.fn(args)

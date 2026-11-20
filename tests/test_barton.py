@@ -220,6 +220,39 @@ class RepoTest(unittest.TestCase):
         g = barton.grade_review(task, tmp, tmp, "Line 3 of a.py flips the bound.")
         self.assertEqual((g["outcome"], g["method"]), ("pending", "judge"))
 
+    def _results(self, rows):
+        b = barton.Barton(self.repo)
+        b.save_config({"tasks": [{"id": t, "kind": "write", "check": {"command": "x"}}
+                                 for t in ("a", "b", "c", "d")]})
+        for task, model, outcome, secs in rows:
+            b.append_result({"run": f"{task}-{model}", "task": task, "kind": "write", "model": model,
+                             "harness": "claude", "outcome": outcome, "attempt": 1, "seconds": secs,
+                             "at": "2026-11-01T10:00:00+00:00"})
+        return b
+
+    def test_quick_set_prefers_tasks_that_told_models_apart_then_fast_ones(self):
+        self._results([("a", "m1", "solved", 900), ("a", "m2", "failed", 900),
+                       ("b", "m1", "solved", 60), ("b", "m2", "solved", 60),
+                       ("c", "m1", "solved", 120), ("c", "m2", "failed", 120),
+                       ("d", "m1", "solved", 30), ("d", "m2", "solved", 30)])
+        self.assertEqual(call("quick", "--repo", str(self.repo), "--coding", "3", "--reviews", "0")["quick"],
+                         ["c", "a", "d"])
+
+    def test_report_compares_models_on_the_same_tasks_only(self):
+        self._results([("a", "m1", "solved", 1), ("a", "m2", "failed", 1), ("b", "m1", "solved", 1)])
+        d = call("report", "--repo", str(self.repo), "--no-open")
+        self.assertEqual((d["tasks"], d["left_out"]), (1, ["b"]))  # m2 has not run b yet
+
+    def test_run_budget_starts_no_task_after_it(self):
+        self._results([])
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            with unittest.mock.patch.object(barton, "run_one", return_value={"outcome": "solved"}) as one, \
+                    unittest.mock.patch.object(barton.time, "time", side_effect=[0, 0] + [10_000] * 20):
+                barton.main(["run", "--repo", str(self.repo), "all", "--harness", "claude",
+                             "--model", "m", "--budget", "30", "--jobs", "1"])
+        self.assertEqual(one.call_count, 1)  # the first started in time; the rest did not start
+        self.assertIn("budget was used up", buf.getvalue())
+
     def test_check_timeout_is_set_per_project(self):
         b = barton.Barton(self.repo)
         self.assertEqual(barton.check_timeout(b), barton.CHECK_TIMEOUT)

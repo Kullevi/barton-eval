@@ -397,7 +397,8 @@ function drawDashboard(c, w, h, T, stacked) {
   setFont(x, 16 * s, 650); x.fillStyle = T.text; x.fillText("Barton-eval", pad + 38 * s, pad + 20 * s);
   const handle = $("handle").value.trim();
   setFont(x, 14 * s, 400); x.fillStyle = T.muted; x.textAlign = "right";
-  x.fillText(ellipsize(x, handle ? `${handle} · ${repoName()}` : repoName(), w / 2 - pad), w - pad, pad + 20 * s); x.textAlign = "left";
+  const where = repoName() + (DATA.quick ? " · quick run" : "");
+  x.fillText(ellipsize(x, handle ? `${handle} · ${where}` : where, w / 2 - pad), w - pad, pad + 20 * s); x.textAlign = "left";
   if (!P.main) {
     setFont(x, 20 * s, 400); x.fillStyle = T.muted;
     x.fillText("No scored runs yet. Ask your agent to continue the Barton run.", pad, pad + 96 * s);

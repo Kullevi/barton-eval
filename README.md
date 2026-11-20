@@ -116,6 +116,18 @@ Details and the research behind these choices are in
 
 ## Time and cost
 
+There are two kinds of run. A **quick run** takes under 30 minutes: only the new
+model, on a few tasks that ran fast and still told models apart, compared with
+the results your usual models already have. A **full run** takes a couple of
+hours: more and larger tasks, every model, and several attempts. The quick
+tasks are part of the full set, so nothing is done twice.
+
+The slow part is preparing the tasks, so your assistant offers to do it ahead,
+right after setup, and to run your usual models then. On the day a new model
+comes out, only the new model has to run. **When the tasks were prepared long
+ago, your assistant suggests refreshing them** with newer work from your
+history, which also keeps them newer than what the models were trained on.
+
 Each task runs the real model through its own CLI, so a run uses your Claude or
 ChatGPT plan, or API credit, like any other session. In our run on the
 [click](https://github.com/pallets/click) library, 18 coding tasks and 5 reviews
@@ -319,11 +331,12 @@ command prints JSON. Your assistant runs these; you never need to.
 | `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
 | `validate ID` | Check that the task's check fails before the change and passes twice with it. |
 | `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
-| `run ID... \| all --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. |
+| `quick [--coding N] [--reviews N]` | Choose the quick set: tasks that told models apart first, then the fastest. |
+| `run ID... \| all \| quick --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
 | `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
 | `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
 | `status` | Progress and scores so far. |
-| `report [--no-open]` | Build the results page and open it in the browser. |
+| `report [--no-open] [--quick]` | Build the results page and open it in the browser. Models are compared only on tasks every one of them has run; `--quick` shows the quick set and says so on the cards. |
 | `clean` | Remove task folders left by runs that were killed. |
 
 ### Where things are kept

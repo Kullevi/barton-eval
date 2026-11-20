@@ -65,22 +65,43 @@ terminal. Offer to show it later; do not do it now.
 
 ## 2. Propose the run in one short message
 
+People want to post about a new model soon after it comes out, so time matters.
+There are two kinds of run:
+
+- **Quick, under 30 minutes:** only the new model, on the quick set (about 8
+  coding tasks and 4 reviews that ran fast and still told models apart), against
+  the results already stored for the user's usual models. Possible once a task
+  set exists and those models have run it.
+- **Full, a couple of hours:** about 20 coding tasks and 6 reviews or more,
+  larger tasks, every model, and up to 3 attempts for a steadier result. The
+  quick set is part of it, so a full run after a quick one only adds what is
+  missing; the user can post the quick card first and the full one later.
+
+**Prepare ahead.** Choosing, checking and planting tasks takes longer than the
+runs. Right after setup, and whenever there is no task set yet, offer to build
+it and run the user's usual models now, so that on the day a model comes out
+only the new model has to run. If `barton status` shows the newest task was
+added long ago (`task_set.days_since` of 60 or more, or the new model was
+trained on newer code than the tasks), suggest refreshing it in one sentence:
+add tasks from recent history, which also keeps a public repo's tasks newer
+than what the models trained on. Old tasks stay; refreshing only adds.
+
 Decide a sensible plan and state it in a few lines, then start unless the user
-changes something. Default: the new model against the model the user normally
-uses, each at its default effort, one attempt, about 10 coding tasks and 5
-review tasks. Never fewer than 5 of each unless the history does not have them;
-then say so. Mention roughly how long it takes (all tasks and models run at the
-same time; with setup and judging, usually 30 to 90 minutes) and, in passing, about what it costs; do not demand approval for the
-cost. The user may change, in their own words:
+changes something. Default when a new model is out and a task set exists: a
+quick run. Otherwise: the new model against the model the user normally uses,
+each at its default effort, one attempt, about 10 coding tasks and 5 review
+tasks. Never fewer than 5 of each unless the history does not have them; then
+say so. Mention roughly how long it takes and, in passing, about what it costs;
+do not demand approval for the cost. The user may change, in their own words:
 
 - which models and which effort/thinking levels (Claude: `low`, `medium`,
   `high`, `xhigh`, `max`; Codex: `low`, `medium`, `high`, `xhigh`),
 - how many attempts per level (more attempts give a fairer picture),
 - coding tasks, review tasks or both, and how many.
 
-Presets you can offer by name: **quick** (6 coding and 3 review tasks, 1
-attempt), **standard** (10 and 5, 1 attempt), **thorough** (16 and 6, 3
-attempts).
+Presets you can offer by name: **quick** (the quick set, the new model only),
+**standard** (10 coding and 5 review tasks, 1 attempt), **full** (20 and 6 or
+more, up to 3 attempts).
 
 ## 3. Prepare the project (once)
 
@@ -163,6 +184,13 @@ level (`gemini-4-argon-medium`); give Barton the model and the level apart,
 `--model gemini-4-argon --effort medium`, so the cards show them like the others. agy has
 no switch to turn off web search, so Barton counts the model's web and browser
 calls and records them as `web_used`; mention it if any run used the web.
+
+For a quick run, run the quick set (`barton quick` chooses it once the usual
+models have results; run it again after adding tasks) with every task at once
+and a budget, and keep its cards apart:
+
+`barton run quick --harness … --model … --jobs 12 --timeout 1200 --budget 25`,
+then `barton report --quick`, whose cards say "quick run".
 
 It runs every task of that model at once (up to 8; `--jobs <n>` changes it,
 lower it if the provider reports rate limits) and prints one result per task as

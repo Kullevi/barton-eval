@@ -153,6 +153,25 @@ class RepoTest(unittest.TestCase):
                          ["error"] * 3)
         self.assertFalse(barton.WORK_ROOT.exists())  # also not after failed runs
 
+        # A model that runs out of time fails the task, and what it started is stopped too.
+        mark = Path(self.tmp.name) / "child-still-ran.txt"
+        child = Path(self.tmp.name) / "child.py"
+        child.write_text(f"import time, pathlib\ntime.sleep(5)\npathlib.Path({str(mark)!r}).write_text('x')\n")
+        slow = Path(self.tmp.name) / "slow.py"
+        slow.write_text(f"import subprocess, sys, time\nsubprocess.Popen([sys.executable, {str(child)!r}])\n"
+                        "time.sleep(60)\n")
+        with unittest.mock.patch.object(barton, "harness_cmd", return_value=[sys.executable, str(slow)]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            t0 = time.time()
+            barton.main(["run", "--repo", str(self.repo), "t0", "--harness", "claude", "--model", "m",
+                         "--again", "--timeout", "2"])
+        self.assertLess(time.time() - t0, 30)
+        last = barton.Barton(self.repo).results()[-1]
+        self.assertEqual((last["outcome"], last["method"]), ("failed", "timed out"), last)
+        time.sleep(6)
+        self.assertFalse(mark.exists())  # the model's own child process was stopped as well
+        self.assertFalse(barton.WORK_ROOT.exists())
+
     def test_plant_flips_a_comparison_and_grading_finds_it(self):
         d = call("plant", "--repo", str(self.repo), "r1", self.fix, "--seed", "1")
         self.assertEqual(d["file"], "calc.py")

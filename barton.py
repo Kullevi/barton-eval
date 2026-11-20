@@ -110,6 +110,11 @@ def out(obj) -> None:
         print(json.dumps(obj, indent=2, ensure_ascii=False), flush=True)
 
 
+def progress(msg: str) -> None:
+    """A line for whoever watches a slow step; stderr, so the JSON answer stays clean."""
+    print(f"barton: {msg}", file=sys.stderr, flush=True)
+
+
 def fail(msg: str, code: int = 1) -> None:
     out({"error": msg})
     sys.exit(code)
@@ -133,20 +138,44 @@ def which(name: str) -> str | None:
 
 def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
             env: dict | None = None, stdin_text: str | None = None):
-    """Run with stdin closed or holding stdin_text; return (code, stdout, stderr, seconds, timed_out)."""
+    """Run with stdin closed or holding stdin_text; return (code, stdout, stderr, seconds, timed_out).
+
+    On a timeout the whole process tree is stopped, not just the program started, so
+    nothing the model left running keeps a task folder locked or uses the machine."""
     t0 = time.time()
     full_env = {**os.environ, **env} if env else None
+    kw = {"cwd": str(cwd), "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "shell": shell,
+          "env": full_env, "stdin": subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL}
+    if os.name == "nt":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+    else:
+        kw["start_new_session"] = True  # its own process group, so the group can be stopped
+    p = subprocess.Popen(cmd, **kw)
     try:
-        io_kw = ({"input": stdin_text.encode("utf-8")} if stdin_text is not None
-                 else {"stdin": subprocess.DEVNULL})
-        p = sp_run(cmd, cwd=str(cwd), capture_output=True, shell=shell, env=full_env,
-                   timeout=timeout, **io_kw)
-        return (p.returncode, p.stdout.decode("utf-8", "replace"),
-                p.stderr.decode("utf-8", "replace"), time.time() - t0, False)
-    except subprocess.TimeoutExpired as e:
-        so = (e.stdout or b"").decode("utf-8", "replace")
-        se = (e.stderr or b"").decode("utf-8", "replace")
-        return (-1, so, se, time.time() - t0, True)
+        so, se = p.communicate(stdin_text.encode("utf-8") if stdin_text is not None else None,
+                               timeout=timeout)
+        to = False
+    except subprocess.TimeoutExpired:
+        stop_tree(p)
+        so, se = p.communicate()
+        to = True
+    return ((-1 if to else p.returncode), so.decode("utf-8", "replace"),
+            se.decode("utf-8", "replace"), time.time() - t0, to)
+
+
+def stop_tree(p: subprocess.Popen) -> None:
+    if os.name == "nt":
+        sp_run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True)
+    else:
+        import signal
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        p.kill()
+    except OSError:
+        pass
 
 
 def resolve_cli(name: str) -> list[str]:
@@ -301,8 +330,9 @@ def cmd_check(args) -> None:
         info["agy"] = {"version": v, "logged_in": ok}
     # Has the user used this CLI here? Only whether its settings folder exists; nothing in it is read.
     home = Path.home()
+    # Antigravity's desktop app keeps .gemini/antigravity; only the CLI writes antigravity-cli.
     for name, folders in (("claude", [".claude"]), ("codex", [".codex"]),
-                          ("agy", [".gemini/antigravity-cli", ".gemini/antigravity"])):
+                          ("agy", [".gemini/antigravity-cli"])):
         used = any((home / f).is_dir() for f in folders)
         info[name] = {**(info[name] or {"installed": False}), "used_here": used}
     out(info)
@@ -361,7 +391,7 @@ def cmd_mine(args) -> None:
     each = max(1, args.show // 3)
     out({"repo": str(b.repo), "commits_scanned": len(commits),
          "counts": {k: len(v) for k, v in groups.items()},
-         "hint": "Mix sizes: mostly medium, some large, a few small. Small tasks rarely "
+         "hint": "Choose hard tasks: mostly large and medium, few small. Small tasks rarely "
                  "separate strong models.",
          **{k: v[:each] for k, v in groups.items()}})
 
@@ -604,10 +634,13 @@ def cmd_validate(args) -> None:
     if not task.get("check"):
         fail("This task has no check; it is judged blind instead.")
     try:
+        progress(f"{task['id']}: checking without the change (it should fail)")
         before = run_check(b, task, make_folder(b, task["base"], f"v-{task['id']}-before"))
         after_dir = make_folder(b, task["base"], f"v-{task['id']}-after",
                                 changed_files(b, task["base"], task["reference"]), "reference")
+        progress(f"{task['id']}: checking with the change, 1 of 2")
         after1 = run_check(b, task, after_dir)
+        progress(f"{task['id']}: checking with the change, 2 of 2")
         after2 = run_check(b, task, after_dir)
     finally:
         for d in (f"v-{task['id']}-before", f"v-{task['id']}-after"):
@@ -670,6 +703,8 @@ def cmd_plant(args) -> None:
     prompt = args.prompt or "Review the latest commit in this repository (`git show HEAD`) for bugs."
     tried = []
     for path, line_no, text, pat, rep, s, e in spots[: args.tries]:
+        if args.check:
+            progress(f"{args.id}: trying a planted bug in {path}:{line_no}")
         new_text = text[:s] + rep + text[e:]
         task = {
             "id": args.id, "kind": "review", "base": base, "reference": sha, "source": "planted",
@@ -943,8 +978,6 @@ def run_one(b: Barton, task: dict, args) -> dict:
         code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, env={"PYTHONFAULTHANDLER": "1"},
                                          stdin_text=prompt if prompt_on_stdin(args.harness) else None)
         u = parse_usage(args.harness, so)
-        if to:
-            u["error"] = u["error"] or f"timed out after {args.timeout} s"
         if (args.harness == "codex" and "blocked by policy" in se
                 and not u.get("commands_ran")):
             # Not one command could run: an environment fault, not a model result.
@@ -969,6 +1002,14 @@ def run_one(b: Barton, task: dict, args) -> dict:
                                              else (estimate_cost(args.model, u), "estimated"))
         if row["cost_usd"] is None:
             row["cost_kind"] = "unknown"
+        if to:
+            # Running out of time is the model's result, not a fault to retry: a task it
+            # could not finish counts as not solved.
+            row.update(outcome="failed" if task["kind"] == "write" else "missed",
+                       method="timed out", note=f"stopped after {args.timeout // 60} minutes")
+            b.append_result(row)
+            out({"result": row})
+            return row
         if u["error"]:
             row.update(outcome="error", method=None, error=u["error"])
             b.append_result(row)

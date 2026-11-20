@@ -70,8 +70,7 @@ changes something. Default: the new model against the model the user normally
 uses, each at its default effort, one attempt, about 10 coding tasks and 5
 review tasks. Never fewer than 5 of each unless the history does not have them;
 then say so. Mention roughly how long it takes (all tasks and models run at the
-same time, so about as long as the slowest task, often 10 to 20 minutes) and,
-in passing, about what it costs; do not demand approval for the
+same time; with setup and judging, usually 30 to 90 minutes) and, in passing, about what it costs; do not demand approval for the
 cost. The user may change, in their own words:
 
 - which models and which effort/thinking levels (Claude: `low`, `medium`,
@@ -88,12 +87,12 @@ attempts).
 Look at the repository yourself and decide how its code and tests run.
 
 - If the project needs installed packages to run its tests, set them up:
-  `barton config --setup "<install command>"` (runs in each task folder), or,
-  faster, `barton config --link node_modules` to reuse the user's installed
-  folder. Untracked files the code needs, such as `.env`, go in
+  `barton config --setup "<install command>"`. It runs once per task commit,
+  and each run gets a copy. Prefer it to `--link`: a linked folder is the
+  user's own, so a model that installs packages in a task would change it. Untracked files the code needs, such as `.env`, go in
   `barton config --copy .env` (copied into task folders only, never committed).
-- `barton config --public yes|no`: whether the repo is public (check the git
-  remote; ask only if you cannot tell). Public code may have been in a model's
+- `barton config --public yes|no`: always set it, so the card is right.
+  Check the git remote; ask only if you cannot tell. Public code may have been in a model's
   training data, and the card says so.
 
 ## 4. Choose tasks
@@ -211,7 +210,10 @@ every model found every planted bug, the run cannot tell the models apart. Befor
 you show the result, add harder tasks (larger commits, bug fixes, changes
 across several files; for reviews, commits with more logic) and run every model
 on them, until the best setting is clearly below full marks. Tasks already run
-stay: they are frozen, and removing them would hide results.
+stay: they are frozen, and removing them would hide results. If the history has
+nothing harder (`barton mine` finds no medium or large commits), say so, show
+the result as it is, and offer once to write a few harder tasks yourself
+(`base: HEAD`, judged blind).
 
 ## 7. Show the result
 
@@ -240,5 +242,9 @@ including where models differed, and that:
   user shares a card themselves.
 - Never write a prompt that gives away the solution, and never judge a model you
   know the identity of.
-- Barton deletes each task copy when its run ends; if a run was killed, remove
-  what is left with `barton clean`.
+- Barton deletes each task copy when its run ends. When the user is done with
+  the comparison, run `barton clean`: it also removes the prepared folders
+  (installed copies per task commit, which can take gigabytes) and anything a
+  killed run left behind.
+- Give a short progress update every few minutes while models run, so the user
+  is never left waiting without word.

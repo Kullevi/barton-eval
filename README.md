@@ -7,7 +7,7 @@ with the models you use today. You get cards you can share: how many of your
 tasks each model solved, whose solution was better when both worked, how many
 planted bugs it caught in code review, and what it took in time and money.
 
-![The Barton results page from a real run on the open-source click library: Claude Opus 5.5 and GPT-6.2 Sol and 6.1 Sol on 18 coding tasks and 5 reviews](docs/report.png)
+![The Barton results page from a real run on the open-source click library: Gemini 4 Argon, Claude Opus 5.5, GPT-6.2 Sol and GPT-6.1 Sol on 18 coding tasks and 5 reviews](docs/report.png)
 
 **To get started, give the link to this page to Claude or Codex and ask it to
 set up Barton for you.** Then say something like *"test GPT-6.2 Sol on my
@@ -59,9 +59,11 @@ on exactly the same tasks.
 
 <img src="docs/card.png" width="600" alt="The share image from the same run, in dark mode">
 
-*The share image from the same run, in dark mode. 13 against 12 solved is within
-what 18 tasks can show, so the card says "too close to call"; where both models
-passed, blind judges from both vendors preferred GPT-6.2 Sol's solution most often.*
+*The share image from the same run, in dark mode. 15 against 13 solved can be
+chance on 18 tasks, so the card says "too close to call". Where two models both
+passed, blind judges from OpenAI and Anthropic, agreeing in both orders, preferred
+GPT-6.2 Sol's solution most often and Gemini's least. Every model found all five
+planted bugs, so the card marks the reviews as too easy to tell apart.*
 
 ## Who does what
 
@@ -272,8 +274,7 @@ they have an account.
 
 Tell the user, in two or three sentences, that Barton is ready, and that they
 can now say for example *"test GPT-6.2 Sol on my project"* in any project
-folder. Mention that a run takes about as long as its slowest task, often 10
-to 20 minutes, and that
+folder. Mention that a run usually takes 30 to 90 minutes, and that
 they get cards to share at the end.
 
 ### 6. Give a fix back (with the user)
@@ -331,8 +332,12 @@ command prints JSON. Your assistant runs these; you never need to.
   `prefs.jsonl`), each run's output and diff under `runs/`, and `report.html`.
   It is listed in the project's `.git/info/exclude`, so git ignores it without
   a change to `.gitignore`.
-- `~/.barton/w/`: temporary copies of the code while a model works, removed
-  after each run.
+- `~/.barton/w/` (or `BARTON_WORK`): temporary copies of the code while a
+  model works, removed after each run.
+- `~/.barton/w-prepared/`: when the project has a setup command, one installed
+  copy per task commit, so the install runs once per task instead of once per
+  model. `barton clean` removes them, and your assistant runs it when you are
+  done.
 
 ## Troubleshooting
 

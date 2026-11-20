@@ -50,8 +50,9 @@ Decide a sensible plan and state it in a few lines, then start unless the user
 changes something. Default: the new model against the model the user normally
 uses, each at its default effort, one attempt, about 10 coding tasks and 5
 review tasks. Never fewer than 5 of each unless the history does not have them;
-then say so. Mention roughly how long it takes (a few minutes per task and
-model) and, in passing, about what it costs; do not demand approval for the
+then say so. Mention roughly how long it takes (all tasks and models run at the
+same time, so about as long as the slowest task, often 10 to 20 minutes) and,
+in passing, about what it costs; do not demand approval for the
 cost. The user may change, in their own words:
 
 - which models and which effort/thinking levels (Claude: `low`, `medium`,
@@ -134,14 +135,18 @@ change it. Use a new id instead.
 
 ## 5. Run
 
-For every task, model, effort level and attempt:
+For every model, effort level and attempt, start one command, and start them
+all at the same time in the background:
 
-`barton run <task> --harness claude|codex --model <model id> [--effort <level>] [--attempt <n>]`
+`barton run all --harness claude|codex --model <model id> [--effort <level>] [--attempt <n>]`
 
-Each run works in a fresh copy of the code at the task's commit, outside the
-user's repository and with no later history, with web access off. Run at most
-two at a time. Read only the JSON line each run prints, not the model's output
-files, so your own context stays small. A run already recorded is skipped, so
+It runs every task of that model at once (up to 8; `--jobs <n>` changes it,
+lower it if the provider reports rate limits) and prints one result per task as
+it finishes, then a summary. Instead of `all` you can name task ids. Each run
+works in a fresh copy of the code at the task's commit, outside the user's
+repository and with no later history, with web access off, and the copy is
+deleted when the run ends. Read only the results Barton prints, not the model's
+output files, so your own context stays small. A run already recorded is skipped, so
 "continue barton" means: run `barton status` and run what is missing.
 
 An `error` outcome is not a score: it means the run could not happen (login,
@@ -205,4 +210,5 @@ including where models differed, and that:
   user shares a card themselves.
 - Never write a prompt that gives away the solution, and never judge a model you
   know the identity of.
-- Clean up with `barton clean` if runs were interrupted.
+- Barton deletes each task copy when its run ends; if a run was killed, remove
+  what is left with `barton clean`.

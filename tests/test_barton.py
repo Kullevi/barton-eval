@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -95,6 +96,46 @@ class RepoTest(unittest.TestCase):
         call("task-add", "--repo", str(self.repo), str(spec))
         d = call("validate", "--repo", str(self.repo), "t1")
         self.assertTrue(d["valid"], d)
+
+    def test_run_all_runs_tasks_at_once_and_cleans_up(self):
+        for i in range(3):
+            spec = Path(self.tmp.name) / f"t{i}.json"
+            spec.write_text(json.dumps({
+                "id": f"t{i}", "kind": "write", "base": self.fix + "^", "reference": self.fix,
+                "prompt": "Add clamp(x, lo, hi) to calc.py.",
+                "check": {"command": f'"{sys.executable}" -m unittest tests.test_calc',
+                          "files": ["tests/__init__.py", "tests/test_calc.py"]}}))
+            call("task-add", "--repo", str(self.repo), str(spec))
+        solution = sh(self.repo, "show", f"{self.fix}:calc.py")
+
+        def fake_model(is_error: bool) -> list[str]:
+            # Solves the task, takes two seconds, and answers like `claude -p`.
+            fake = Path(self.tmp.name) / f"fake{int(is_error)}.py"
+            fake.write_text(
+                "import json, pathlib, time\n"
+                f"pathlib.Path('calc.py').write_text({solution!r})\n"
+                "time.sleep(2)\n"
+                "print(json.dumps({'type': 'result', 'subtype': 'success', 'result': 'done',"
+                f" 'is_error': {is_error}, 'usage': {{}}, 'modelUsage': {{'m': {{}}}}}}))\n")
+            return [sys.executable, str(fake)]
+
+        def run(*extra: str, is_error=False) -> float:
+            with unittest.mock.patch.object(barton, "harness_cmd", return_value=fake_model(is_error)), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                t0 = time.time()
+                barton.main(["run", "--repo", str(self.repo), "all", "--harness", "claude",
+                             "--model", "m", *extra])
+                return time.time() - t0
+
+        took = run()
+        outcomes = [r["outcome"] for r in barton.Barton(self.repo).results()]
+        self.assertEqual(outcomes, ["solved"] * 3)
+        self.assertLess(took, 6)  # one after another would take at least 3 x 2 s
+        self.assertFalse(barton.WORK_ROOT.exists())  # no task folder is left behind
+        run("--again", is_error=True)
+        self.assertEqual([r["outcome"] for r in barton.Barton(self.repo).results()][3:],
+                         ["error"] * 3)
+        self.assertFalse(barton.WORK_ROOT.exists())  # also not after failed runs
 
     def test_plant_flips_a_comparison_and_grading_finds_it(self):
         d = call("plant", "--repo", str(self.repo), "r1", self.fix, "--seed", "1")

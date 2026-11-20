@@ -21,7 +21,9 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 import webbrowser
 from pathlib import Path
 
@@ -34,6 +36,7 @@ GIT_ID = ["-c", "user.name=barton", "-c", "user.email=barton@localhost",
           "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false"]
 RUN_TIMEOUT = 45 * 60
 CHECK_TIMEOUT = 15 * 60
+JOBS = 8  # runs of one model at the same time; the model's provider is the limit, not this computer
 
 TEST_PATH = re.compile(
     r"(^|/)(tests?|__tests__|spec|specs)/|(^|/)test_[^/]+\.py$|_test\.(py|go|rb)$"
@@ -63,8 +66,12 @@ def sp_run(cmd, **kw):
         kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
     return subprocess.run(cmd, **kw)
 
+_print_lock = threading.Lock()
+
+
 def out(obj) -> None:
-    print(json.dumps(obj, indent=2, ensure_ascii=False))
+    with _print_lock:
+        print(json.dumps(obj, indent=2, ensure_ascii=False), flush=True)
 
 
 def fail(msg: str, code: int = 1) -> None:
@@ -175,8 +182,41 @@ class Barton:
 
     def append_result(self, row: dict) -> None:
         self.init()
-        with (self.dir / "results.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        # Runs finish at the same time, in this process and in others started for
+        # other models, so each line is written whole under a lock.
+        with _append_lock, file_lock(self.dir / "results.lock"):
+            with (self.dir / "results.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+_append_lock = threading.Lock()
+
+
+class file_lock:
+    """A lock other processes respect: the lock file exists while it is held.
+    A lock older than a minute was left by a crashed process and is taken over."""
+
+    def __init__(self, path: Path):
+        self.path = path
+
+    def __enter__(self):
+        while True:
+            try:
+                os.close(os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - self.path.stat().st_mtime > 60:
+                        self.path.unlink()
+                except FileNotFoundError:
+                    pass
+                time.sleep(0.05)
+
+    def __exit__(self, *exc):
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 # ---------------------------------------------------------------- check
@@ -307,6 +347,15 @@ def make_folder(b: Barton, sha: str, name: str, files: dict[str, bytes | None] |
     if dest.exists():
         remove_tree(dest)
     dest.mkdir(parents=True)
+    try:
+        fill_folder(b, cfg, sha, dest, files, second_commit)
+    except BaseException:
+        remove_tree(dest)
+        raise
+    return dest
+
+
+def fill_folder(b: Barton, cfg: dict, sha: str, dest: Path, files, second_commit) -> None:
     extract(b.repo, sha, dest)
     ignore = ["# barton: linked and copied, never part of the work"]
     for rel in cfg.get("link", []):
@@ -340,7 +389,6 @@ def make_folder(b: Barton, sha: str, name: str, files: dict[str, bytes | None] |
                 p.write_bytes(content)
         git(dest, "add", "-A")
         git(dest, "commit", "-q", "--allow-empty", "-m", second_commit or "change")
-    return dest
 
 
 def remove_tree(p: Path) -> None:
@@ -449,18 +497,20 @@ def cmd_validate(args) -> None:
     task = b.task(args.task)
     if not task.get("check"):
         fail("This task has no check; it is judged blind instead.")
-    before = run_check(b, task, make_folder(b, task["base"], f"v-{task['id']}-before"))
-    after_dir = make_folder(b, task["reference"], f"v-{task['id']}-after")
-    after1 = run_check(b, task, after_dir)
-    after2 = run_check(b, task, after_dir)
+    try:
+        before = run_check(b, task, make_folder(b, task["base"], f"v-{task['id']}-before"))
+        after_dir = make_folder(b, task["reference"], f"v-{task['id']}-after")
+        after1 = run_check(b, task, after_dir)
+        after2 = run_check(b, task, after_dir)
+    finally:
+        for d in (f"v-{task['id']}-before", f"v-{task['id']}-after"):
+            remove_tree(WORK_ROOT / d)
     ok = (not before["passed"]) and after1["passed"] and after2["passed"]
     cfg = b.config()
     for t in cfg["tasks"]:
         if t["id"] == task["id"]:
             t["validated"] = {"ok": ok, "at": now()}
     b.save_config(cfg)
-    for d in (f"v-{task['id']}-before", f"v-{task['id']}-after"):
-        remove_tree(WORK_ROOT / d)
     out({"task": task["id"], "valid": ok, "before": before, "after": [after1, after2]})
 
 
@@ -529,8 +579,10 @@ def cmd_plant(args) -> None:
             task["plant"]["env"] = env
         name = f"p-{args.id}"
         folder = make_folder(b, base, name, review_files(b, task), "change")
-        code, so, se, _, to = run_cmd(args.check, folder, CHECK_TIMEOUT, shell=True, env=env)
-        remove_tree(folder)
+        try:
+            code, so, se, _, to = run_cmd(args.check, folder, CHECK_TIMEOUT, shell=True, env=env)
+        finally:
+            remove_tree(folder)
         tried.append({"line": line_no, "after": new_text.strip(), "tests_failed": code != 0})
         if code != 0:
             task["plant"]["caught_by_tests"] = True
@@ -656,16 +708,44 @@ def estimate_cost(model: str, u: dict) -> float | None:
 
 
 def cmd_run(args) -> None:
-    """Run one model on one task, check it, and record the result."""
+    """Run one model on the given tasks (or `all`), several at once, and record each."""
     b = Barton(Path(args.repo))
-    task = b.task(args.task)
+    ids = ([t["id"] for t in b.config().get("tasks", [])] if args.tasks == ["all"]
+           else args.tasks)
+    tasks = [b.task(i) for i in dict.fromkeys(ids)]
+    recorded = b.results()
+    todo = []
+    for task in tasks:
+        done = [r for r in recorded if r["task"] == task["id"] and r["model"] == args.model
+                and r.get("effort") == args.effort and r["attempt"] == args.attempt
+                and r["harness"] == args.harness and r["outcome"] != "error"]
+        if done and not args.again:
+            out({"skipped": "already recorded", "result": done[-1]})
+        else:
+            todo.append(task)
+
+    def one(task: dict) -> str:
+        try:
+            return run_one(b, task, args)["outcome"]
+        except BaseException as e:  # fail() exits; one broken task must not stop the rest
+            msg = str(e) if not isinstance(e, SystemExit) else "see the error above"
+            out({"task": task["id"], "error": f"the run could not start: {msg}"})
+            return "error"
+
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        outcomes = list(pool.map(one, todo))
+    try:
+        WORK_ROOT.rmdir()  # only when every task folder is gone
+    except OSError:
+        pass
+    if len(tasks) > 1:
+        out({"ran": len(todo), "skipped": len(tasks) - len(todo),
+             "outcomes": {o: outcomes.count(o) for o in sorted(set(outcomes))}})
+
+
+def run_one(b: Barton, task: dict, args) -> dict:
+    """Run one model on one task in a fresh folder, check it, record it, remove the folder."""
     attempt = args.attempt
-    done = [r for r in b.results() if r["task"] == task["id"] and r["model"] == args.model
-            and r.get("effort") == args.effort and r["attempt"] == attempt
-            and r["harness"] == args.harness and r["outcome"] != "error"]
-    if done and not args.again:
-        out({"skipped": "already recorded", "result": done[-1]})
-        return
     run_id = f"{task['id']}-{re.sub(r'[^A-Za-z0-9.]+', '-', args.model)}-{args.effort or 'default'}-{attempt}"
     # The folder name shows up in the model's output, so it must not name the model.
     folder_name = f"{task['id']}-{os.urandom(4).hex()}"
@@ -676,58 +756,62 @@ def cmd_run(args) -> None:
     else:
         folder = make_folder(b, task["base"], folder_name)
         prompt = task["prompt"] + WRITE_RULES
-    start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
-    cmd = harness_cmd(args.harness, args.model, args.effort, folder)
-    code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, stdin_text=prompt)
-    u = parse_usage(args.harness, so)
-    if to:
-        u["error"] = u["error"] or f"timed out after {args.timeout} s"
-    if (args.harness == "codex" and "blocked by policy" in se
-            and not u.get("commands_ran")):
-        # Not one command could run: an environment fault, not a model result.
-        u["error"] = u["error"] or "the sandbox blocked every command the model tried"
-    run_dir = b.dir / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "output.txt").write_text(so[-200000:] + "\n--- stderr ---\n" + se[-20000:],
-                                        encoding="utf-8")
-    row = {"v": 1, "task": task["id"], "kind": task["kind"], "source": task.get("source"),
-           "model": args.model, "harness": args.harness, "harness_version": cli_version(args.harness),
-           "effort": args.effort, "attempt": attempt, "run": run_id, "at": now(),
-           "seconds": round(secs, 1), "tokens": {k: u[k] for k in ("input", "cached", "output")},
-           "model_seen": u["model_seen"]}
-    cost = u["cost_usd"]
-    row["cost_usd"], row["cost_kind"] = ((round(cost, 4), "reported") if cost is not None
-                                         else (estimate_cost(args.model, u), "estimated"))
-    if row["cost_usd"] is None:
-        row["cost_kind"] = "unknown"
-    if u["error"]:
-        row.update(outcome="error", method=None, error=u["error"])
-        b.append_result(row)
-        out({"result": row, "folder": str(folder),
-             "note": "Errors are not scores. Fix the cause (login, model name, limits) and run again."})
-        return
-    if task["kind"] == "write":
-        git(folder, "add", "-A")
-        patch = git(folder, "diff", "--cached", "--ignore-cr-at-eol", start_head)  # Windows tools rewrite line endings
-        (run_dir / "diff.patch").write_text(patch, encoding="utf-8")
-        row["lines_changed"] = sum(1 for l in patch.splitlines()
-                                   if l[:1] in "+-" and l[:3] not in ("+++", "---"))
-        if task.get("check"):
-            chk = run_check(b, task, folder)
-            (run_dir / "check.txt").write_text(json.dumps(chk, indent=2), encoding="utf-8")
-            row.update(outcome="solved" if chk["passed"] else "failed",
-                       method=task["check"].get("method", "tests"))
-        elif not patch.strip():
-            row.update(outcome="failed", method="no change")
+    try:
+        start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
+        cmd = harness_cmd(args.harness, args.model, args.effort, folder)
+        code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, stdin_text=prompt)
+        u = parse_usage(args.harness, so)
+        if to:
+            u["error"] = u["error"] or f"timed out after {args.timeout} s"
+        if (args.harness == "codex" and "blocked by policy" in se
+                and not u.get("commands_ran")):
+            # Not one command could run: an environment fault, not a model result.
+            u["error"] = u["error"] or "the sandbox blocked every command the model tried"
+        run_dir = b.dir / "runs" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "output.txt").write_text(so[-200000:] + "\n--- stderr ---\n" + se[-20000:],
+                                            encoding="utf-8")
+        row = {"v": 1, "task": task["id"], "kind": task["kind"], "source": task.get("source"),
+               "model": args.model, "harness": args.harness, "harness_version": cli_version(args.harness),
+               "effort": args.effort, "attempt": attempt, "run": run_id, "at": now(),
+               "seconds": round(secs, 1), "tokens": {k: u[k] for k in ("input", "cached", "output")},
+               "model_seen": u["model_seen"]}
+        cost = u["cost_usd"]
+        row["cost_usd"], row["cost_kind"] = ((round(cost, 4), "reported") if cost is not None
+                                             else (estimate_cost(args.model, u), "estimated"))
+        if row["cost_usd"] is None:
+            row["cost_kind"] = "unknown"
+        if u["error"]:
+            row.update(outcome="error", method=None, error=u["error"])
+            b.append_result(row)
+            out({"result": row,
+                 "note": "Errors are not scores. Fix the cause (login, model name, limits) and run again."})
+            return row
+        if task["kind"] == "write":
+            git(folder, "add", "-A")
+            patch = git(folder, "diff", "--cached", "--ignore-cr-at-eol", start_head)  # Windows tools rewrite line endings
+            (run_dir / "diff.patch").write_text(patch, encoding="utf-8")
+            row["lines_changed"] = sum(1 for l in patch.splitlines()
+                                       if l[:1] in "+-" and l[:3] not in ("+++", "---"))
+            if task.get("check"):
+                chk = run_check(b, task, folder)
+                (run_dir / "check.txt").write_text(json.dumps(chk, indent=2), encoding="utf-8")
+                row.update(outcome="solved" if chk["passed"] else "failed",
+                           method=task["check"].get("method", "tests"))
+            elif not patch.strip():
+                row.update(outcome="failed", method="no change")
+            else:
+                row.update(outcome="pending", method="judge")
         else:
-            row.update(outcome="pending", method="judge")
-    else:
-        row["method"] = "planted"
-        row.update(grade_review(task, folder, run_dir, u.get("final", "")))
-    b.append_result(row)
-    if not args.keep:
-        remove_tree(folder)
-    out({"result": row})
+            row["method"] = "planted"
+            row.update(grade_review(task, folder, run_dir, u.get("final", "")))
+        b.append_result(row)
+        out({"result": row})
+        return row
+    finally:
+        # Every run cleans up after itself, also after an error or an interruption.
+        if not args.keep:
+            remove_tree(folder)
 
 
 CLIP = 300_000  # characters of one diff or review in a judge bundle
@@ -1018,6 +1102,7 @@ def cmd_clean(args) -> None:
     if WORK_ROOT.exists():
         for d in WORK_ROOT.iterdir():
             remove_tree(d)
+        WORK_ROOT.rmdir()
     out({"cleaned": str(WORK_ROOT)})
 
 
@@ -1064,8 +1149,9 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--env", action="append", metavar="NAME=VALUE",
                     help="environment for --check, such as PYTHONPATH=src (repeatable)")
     sp.add_argument("--tries", type=int, default=12)
-    sp = p("run", cmd_run, "run one model on one task and record it")
-    sp.add_argument("task")
+    sp = p("run", cmd_run, "run one model on tasks, several at once, and record each")
+    sp.add_argument("tasks", nargs="+", help="task ids, or all")
+    sp.add_argument("--jobs", type=int, default=JOBS, help="runs at the same time")
     sp.add_argument("--harness", required=True, choices=["claude", "codex"])
     sp.add_argument("--model", required=True)
     sp.add_argument("--effort")

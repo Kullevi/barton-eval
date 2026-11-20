@@ -117,9 +117,11 @@ Details and the research behind these choices are in
 Each task runs the real model through its own CLI, so a run uses your Claude or
 ChatGPT plan, or API credit, like any other session. In our run on the
 [click](https://github.com/pallets/click) library, 18 coding tasks and 5 reviews
-took each model 46 to 67 minutes at medium effort: $11.16 for Claude Opus 5.5 as
+took each model 46 to 67 minutes of work at medium effort: $11.16 for Claude Opus 5.5 as
 reported by Claude Code, and about $3 to $4 estimated for each GPT model.
-Larger tasks, higher thinking levels and more attempts cost more. Your
+Barton runs all tasks and all models at the same time (up to 8 tasks per
+model at once), so the whole run takes about as long as its slowest tasks, not
+the sum. Larger tasks, higher thinking levels and more attempts cost more. Your
 assistant gives a rough figure before it starts, and the cards show the
 actual cost: as reported by Claude Code, and estimated from tokens for Codex
 (marked "est.", from `prices.json`). On a subscription you may not pay per run
@@ -235,7 +237,8 @@ clicks **Authorize** in the browser.
 
 Tell the user, in two or three sentences, that Barton is ready, and that they
 can now say for example *"test GPT-6.2 Sol on my project"* in any project
-folder. Mention that a run takes some minutes per task and model, and that
+folder. Mention that a run takes about as long as its slowest task, often 10
+to 20 minutes, and that
 they get cards to share at the end.
 
 ### 6. Give a fix back (with the user)
@@ -280,12 +283,12 @@ command prints JSON. Your assistant runs these; you never need to.
 | `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
 | `validate ID` | Check that the task's check fails before the change and passes twice with it. |
 | `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
-| `run ID --harness claude\|codex --model M [--effort E] [--attempt N] [--again]` | Run one model on one task in a clean copy and record the result. |
+| `run ID... \| all --harness claude\|codex --model M [--effort E] [--attempt N] [--jobs N] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. |
 | `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
 | `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
 | `status` | Progress and scores so far. |
 | `report [--no-open]` | Build the results page and open it in the browser. |
-| `clean` | Remove task folders left by interrupted runs. |
+| `clean` | Remove task folders left by runs that were killed. |
 
 ### Where things are kept
 

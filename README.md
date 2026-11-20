@@ -137,7 +137,9 @@ test OpenAI models, the [Codex CLI](https://github.com/openai/codex); to test
 Google's Gemini models, the
 [Antigravity CLI](https://antigravity.google/docs/cli/headless/) (`agy`).
 Your assistant installs what is missing. On Windows, Barton runs every
-program without a console window, so nothing flashes up while you work.
+program without a console window, so nothing flashes up while you work, and a
+program that crashes during a run, even one the model starts from its own
+shell, ends with an error code instead of an error box waiting for a click.
 
 ## About Kullevi, the team behind Barton
 

@@ -50,12 +50,46 @@ CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb",
 
 # ---------------------------------------------------------------- helpers
 
-if os.name == "nt":
-    # A program that crashes during a run (a test, a CLI) should end with an error
-    # code, not open a Windows error box nobody is there to close. Child processes
-    # inherit this error mode.
+def contain_crashes() -> bool:
+    """On Windows, make every program Barton starts, and every program those start,
+    crash with an error code instead of opening an error box nobody is there to close.
+
+    The error mode alone is not enough: it is inherited, but PowerShell resets it for
+    the programs it starts, so a test the agent runs from PowerShell could still open
+    a box and hang until someone clicks it. A job object with "die on unhandled
+    exception" holds for every process in it, and children join their parent's job."""
+    if os.name != "nt":
+        return False
     import ctypes
-    ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)  # no critical-error, crash or open-file boxes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.SetErrorMode(0x0001 | 0x0002 | 0x8000)  # no critical-error, crash or open-file boxes
+
+    class Basic(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class Extended(ctypes.Structure):
+        _fields_ = [("Basic", Basic), ("IoInfo", ctypes.c_ulonglong * 6),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    k.CreateJobObjectW.restype = wintypes.HANDLE
+    k.GetCurrentProcess.restype = wintypes.HANDLE
+    k.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    k.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    job = k.CreateJobObjectW(None, None)
+    if not job:
+        return False
+    info = Extended()
+    # Die on unhandled exception; a program that must leave the job (an installer) still may.
+    info.Basic.LimitFlags = 0x400 | 0x800
+    ok = (k.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+          and k.AssignProcessToJobObject(job, k.GetCurrentProcess()))
+    return bool(ok)  # the handle stays open for the life of this process
 
 
 def sp_run(cmd, **kw):
@@ -900,7 +934,8 @@ def run_one(b: Barton, task: dict, args) -> dict:
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
         cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt)
-        code, so, se, secs, to = run_cmd(cmd, folder, args.timeout,
+        # A Python that crashes while the model works prints where, instead of dying silently.
+        code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, env={"PYTHONFAULTHANDLER": "1"},
                                          stdin_text=prompt if prompt_on_stdin(args.harness) else None)
         u = parse_usage(args.harness, so)
         if to:
@@ -1258,6 +1293,7 @@ def cmd_clean(args) -> None:
 # ---------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> None:
+    contain_crashes()
     # Windows pipes default to the ANSI code page; commit messages are often not ANSI.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")

@@ -284,6 +284,22 @@ class PromptTest(unittest.TestCase):
         self.assertEqual({k: d[k]["used_here"] for k in ("claude", "codex", "agy")},
                          {"claude": False, "codex": True, "agy": False})
 
+    @unittest.skipUnless(os.name == "nt", "Windows error boxes")
+    def test_a_crash_two_programs_down_ends_without_an_error_box(self):
+        # PowerShell resets the inherited error mode, so a crash in a program it starts
+        # would open a box and hang until clicked. Barton's job object prevents that.
+        here = Path(__file__).resolve().parents[1]
+        crash = "import faulthandler; faulthandler._read_null()"
+        script = (f"import subprocess, sys; sys.path.insert(0, {str(here)!r}); import barton; "
+                  "assert barton.contain_crashes(); "
+                  "ps = ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', "
+                  f"\"& '\" + sys.executable + \"' -c '{crash}'; Write-Output $LASTEXITCODE\"]; "
+                  "print(subprocess.run(ps, capture_output=True, text=True, "
+                  "creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip())")
+        p = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True, text=True,
+                           timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(p.stdout.strip(), "-1073741819", p.stderr)  # access violation, no box
+
     def test_agy_gets_the_prompt_whole_as_one_argument(self):
         # agy reads no prompt from stdin; it is an .exe, so a multi-line argument survives.
         text = 'Task.\n\nRules with "quotes" after a blank line.'

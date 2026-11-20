@@ -1,7 +1,11 @@
 {
-  "_note": "US dollars per million tokens at list API prices: input, cached input, output. Used only when the CLI reports no cost (Codex). Add or correct models here.",
+  "_note": "US dollars per million tokens at list API prices: input, cached input, output (thinking counts as output). Used only when the CLI reports no cost (Codex, Antigravity). A price that changes is a list of periods, each from the date it starts. Add or correct models here.",
   "gpt-6.2-sol": {"input": 2.0, "cached": 0.10, "output": 10.0},
   "gpt-6.1-sol": {"input": 2.0, "cached": 0.10, "output": 10.0},
   "claude-opus-5-5": {"input": 4.0, "cached": 0.20, "output": 20.0},
-  "claude-fable-5-2": {"input": 8.0, "cached": 0.20, "output": 40.0}
+  "claude-fable-5-2": {"input": 8.0, "cached": 0.20, "output": 40.0},
+  "gemini-4-argon": [
+    {"from": "2026-10-13", "input": 2.0, "cached": 0.10, "output": 10.0},
+    {"from": "2026-12-01", "input": 4.0, "cached": 0.20, "output": 20.0}
+  ]
 }

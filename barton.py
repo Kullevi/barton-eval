@@ -870,12 +870,17 @@ def parse_agy(stdout: str, u: dict) -> dict:
     return u
 
 
-def estimate_cost(model: str, u: dict) -> float | None:
+def estimate_cost(model: str, u: dict, day: str | None = None) -> float | None:
+    """What the tokens would cost at the vendor's list API price on `day` (default today).
+    A model whose price changes lists its periods, each with the date it starts."""
     try:
         prices = json.loads(PRICES_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     p = prices.get(model)
+    if isinstance(p, list):
+        day = day or dt.datetime.now(dt.timezone.utc).date().isoformat()
+        p = ([x for x in p if x.get("from", "") <= day] or [None])[-1]
     if not p:
         return None
     return round((u["input"] * p["input"] + u["cached"] * p.get("cached", p["input"])

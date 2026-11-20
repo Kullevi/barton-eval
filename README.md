@@ -117,17 +117,20 @@ Details and the research behind these choices are in
 Each task runs the real model through its own CLI, so a run uses your Claude or
 ChatGPT plan, or API credit, like any other session. In our run on the
 [click](https://github.com/pallets/click) library, 18 coding tasks and 5 reviews
-took each model 46 to 67 minutes of work at medium effort: $11.16 for Claude Opus 5.5 as
-reported by Claude Code, and about $3 to $4 estimated for each GPT model.
+took each model 46 to 67 minutes of work at medium effort. At API prices that is
+$11.16 for Claude Opus 5.5 as reported by Claude Code, and about $3 to $4
+estimated for each GPT model.
 Barton runs all tasks and all models at the same time (up to 8 tasks per
 model at once), so the whole run takes about as long as its slowest tasks, not
-the sum. Larger tasks, higher thinking levels and more attempts cost more. Your
-assistant gives a rough figure before it starts, and the cards show the
-actual cost: as reported by Claude Code, and estimated from tokens for Codex
-(marked "est.", from `prices.json`). The Antigravity CLI reports tokens but no
-cost, so Gemini runs show tokens and time only until `prices.json` has the
-model's price. On a subscription you may not pay per run
-at all.
+the sum. Larger tasks, higher thinking levels and more attempts cost more.
+
+The cards show cost as **what the run would cost at the vendor's API prices**
+("API $11.16"): as reported by Claude Code, and estimated from tokens for Codex
+and the Antigravity CLI ("API ≈$4.32", from the dated list prices in
+`prices.json`). Most people run Barton on a Claude or ChatGPT subscription,
+where a run does not cost that money but uses part of the plan's usage limits
+instead; your assistant tells you so, and how to see how much of your limit is
+left.
 
 ## Works on
 

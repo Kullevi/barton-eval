@@ -124,7 +124,8 @@ const byRate = (a, b) => b.hits / b.n - a.hits / a.n || a.secs / a.runs - b.secs
 
 function costText(s) {
   if (!s.costKnown) return "cost unknown";
-  return fmtUsd(s.cost / s.runs) + (s.costEst ? " est." : "");
+  // What the run would cost at the vendor's API price; on a subscription it uses plan quota instead.
+  return "API " + (s.costEst ? "≈" : "") + fmtUsd(s.cost / s.runs);
 }
 
 function methodShort(list) {

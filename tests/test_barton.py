@@ -387,6 +387,9 @@ class ParseTest(unittest.TestCase):
         u = {"input": 1_000_000, "cached": 1_000_000, "output": 1_000_000}
         self.assertEqual(barton.estimate_cost("gpt-6.2-sol", u), 12.1)
         self.assertIsNone(barton.estimate_cost("unknown-model", u))
+        self.assertEqual(barton.estimate_cost("gemini-4-argon", u, "2026-11-20"), 12.1)
+        self.assertEqual(barton.estimate_cost("gemini-4-argon", u, "2026-12-01"), 24.2)
+        self.assertIsNone(barton.estimate_cost("gemini-4-argon", u, "2026-01-01"))
 
 
 if __name__ == "__main__":

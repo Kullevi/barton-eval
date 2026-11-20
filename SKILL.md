@@ -218,7 +218,12 @@ including where models differed, and that:
 - they can type their name or handle on the page, then press **Copy image**
   to paste a card straight into a post;
 - small samples are shown as they are: when the card says "too close to call",
-  the models did about equally well on these tasks.
+  the models did about equally well on these tasks;
+- the costs on the cards are what the run would cost at API prices. On a
+  subscription (Claude, ChatGPT, Google) it costs no extra money but used part
+  of the plan's usage limits; say where they can see how much is left (in
+  Claude Code `/usage`, in Codex `/status`), and do not turn it into a
+  percentage yourself.
 
 ## Rules
 

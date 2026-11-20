@@ -57,7 +57,8 @@ def sp_run(cmd, **kw):
     """Every subprocess goes through here. On Windows it gets a hidden console, which
     its children (git, cmd, the model CLIs, test runners) share, so no terminal
     window opens; stdin is closed unless given."""
-    kw.setdefault("stdin", subprocess.DEVNULL)
+    if "input" not in kw:
+        kw.setdefault("stdin", subprocess.DEVNULL)
     if os.name == "nt":
         kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
     return subprocess.run(cmd, **kw)
@@ -88,13 +89,15 @@ def which(name: str) -> str | None:
 
 
 def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
-            env: dict | None = None):
-    """Run with stdin closed; return (code, stdout, stderr, seconds, timed_out)."""
+            env: dict | None = None, stdin_text: str | None = None):
+    """Run with stdin closed or holding stdin_text; return (code, stdout, stderr, seconds, timed_out)."""
     t0 = time.time()
     full_env = {**os.environ, **env} if env else None
     try:
+        io_kw = ({"input": stdin_text.encode("utf-8")} if stdin_text is not None
+                 else {"stdin": subprocess.DEVNULL})
         p = sp_run(cmd, cwd=str(cwd), capture_output=True, shell=shell, env=full_env,
-                           stdin=subprocess.DEVNULL, timeout=timeout)
+                   timeout=timeout, **io_kw)
         return (p.returncode, p.stdout.decode("utf-8", "replace"),
                 p.stderr.decode("utf-8", "replace"), time.time() - t0, False)
     except subprocess.TimeoutExpired as e:
@@ -465,6 +468,8 @@ MUTATIONS = [
     (r"&&", "||"), (r"\|\|", "&&"), (r"\band\b", "or"), (r"\bor\b", "and"),
     (r"\btrue\b", "false"), (r"\bfalse\b", "true"), (r"\bTrue\b", "False"), (r"\bFalse\b", "True"),
     (r"\+ 1\b", "- 1"), (r"- 1\b", "+ 1"),
+    (r"\bis None\b", "is not None"), (r"\bis not None\b", "is None"),
+    (r"\bnot in\b", "in"), (r"\bif not\b", "if"), (r"\[-1\]", "[0]"),
 ]
 COMMENT = re.compile(r"^\s*(#|//|/\*|\*|<!--)")
 
@@ -560,10 +565,12 @@ REVIEW_RULES = ("\n\nDo not change any files. Report only bugs you are confident
                 '"problem": "<one sentence>"}, or [] if you found none.')
 
 
-def harness_cmd(harness: str, model: str, effort: str | None, prompt: str, folder: Path):
+def harness_cmd(harness: str, model: str, effort: str | None, folder: Path):
+    """The CLI command; the prompt goes on stdin, because Windows .cmd shims cut an
+    argument at its first line break and drop every argument after it."""
     if harness == "claude":
         cmd = resolve_cli("claude") + [
-            "-p", prompt, "--model", model, "--output-format", "json",
+            "-p", "--model", model, "--output-format", "json",
             "--permission-mode", "dontAsk",
             "--allowedTools", "Read,Edit,Write,Glob,Grep,Bash,TodoWrite",
             "--disallowedTools", "WebFetch,WebSearch",
@@ -583,7 +590,7 @@ def harness_cmd(harness: str, model: str, effort: str | None, prompt: str, folde
             cmd += ["-c", 'windows.sandbox="unelevated"']
         if effort:
             cmd += ["-c", f'model_reasoning_effort="{effort}"']
-        return cmd + [prompt]
+        return cmd + ["-"]
     fail(f"Unknown harness '{harness}'. Use 'claude' or 'codex'.")
 
 
@@ -666,8 +673,8 @@ def cmd_run(args) -> None:
         folder = make_folder(b, task["base"], folder_name)
         prompt = task["prompt"] + WRITE_RULES
     start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
-    cmd = harness_cmd(args.harness, args.model, args.effort, prompt, folder)
-    code, so, se, secs, to = run_cmd(cmd, folder, args.timeout)
+    cmd = harness_cmd(args.harness, args.model, args.effort, folder)
+    code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, stdin_text=prompt)
     u = parse_usage(args.harness, so)
     if to:
         u["error"] = u["error"] or f"timed out after {args.timeout} s"

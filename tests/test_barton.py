@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -203,6 +204,19 @@ class QualityTest(unittest.TestCase):
         self.prefer("x", "y", "first")
         self.prefer("y", "x", "first")  # position bias: always the first
         self.assertIsNone(barton.quality(self.b)[0]["winner"])
+
+
+class PromptTest(unittest.TestCase):
+    def test_prompt_reaches_the_cli_whole_on_stdin(self):
+        # Windows .cmd shims cut an argument at its first line break, so no prompt goes in argv.
+        for h in ("claude", "codex"):
+            with unittest.mock.patch.object(barton, "resolve_cli", return_value=["x"]):
+                cmd = barton.harness_cmd(h, "m", "low", Path("."))
+            self.assertFalse(any("\n" in a for a in cmd))
+        echo = [sys.executable, "-c", "import sys; sys.stdout.write(sys.stdin.read())"]
+        text = "Task.\n\nRules after a blank line."
+        got = barton.run_cmd(echo, Path("."), 60, stdin_text=text)[1]
+        self.assertEqual(got.splitlines(), text.splitlines())
 
 
 class ParseTest(unittest.TestCase):

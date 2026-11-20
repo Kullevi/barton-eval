@@ -172,6 +172,21 @@ class RepoTest(unittest.TestCase):
         self.assertFalse(mark.exists())  # the model's own child process was stopped as well
         self.assertFalse(barton.WORK_ROOT.exists())
 
+        # Codex whose sandbox cannot start runs no command at all: an error, not a failed task.
+        boxed = Path(self.tmp.name) / "boxed.py"
+        boxed.write_text(
+            "import json\n"
+            "print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text':"
+            " 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted'}}))\n"
+            "print(json.dumps({'type': 'turn.completed', 'usage': {}}))\n")
+        with unittest.mock.patch.object(barton, "harness_cmd", return_value=[sys.executable, str(boxed)]), \
+                contextlib.redirect_stdout(io.StringIO()):
+            barton.main(["run", "--repo", str(self.repo), "t0", "--harness", "codex", "--model", "m",
+                         "--again"])
+        last = barton.Barton(self.repo).results()[-1]
+        self.assertEqual(last["outcome"], "error", last)
+        self.assertIn("codex-sandbox off", last["error"])
+
     def test_plant_flips_a_comparison_and_grading_finds_it(self):
         d = call("plant", "--repo", str(self.repo), "r1", self.fix, "--seed", "1")
         self.assertEqual(d["file"], "calc.py")
@@ -341,6 +356,15 @@ class PromptTest(unittest.TestCase):
         text = "Task.\n\nRules after a blank line."
         got = barton.run_cmd(echo, Path("."), 60, stdin_text=text)[1]
         self.assertEqual(got.splitlines(), text.splitlines())
+
+    def test_codex_sandbox_can_be_turned_off_and_reads_instructions_whole(self):
+        with unittest.mock.patch.object(barton, "resolve_cli", return_value=["x"]):
+            on = barton.harness_cmd("codex", "m", "low", Path("."))
+            off = barton.harness_cmd("codex", "m", "low", Path("."), sandbox=False)
+        self.assertIn("workspace-write", on)
+        self.assertIn("danger-full-access", off)
+        self.assertNotIn("workspace-write", off)
+        self.assertIn("project_doc_max_bytes=1048576", on)
 
     def test_check_tells_which_clis_were_used_here(self):
         with tempfile.TemporaryDirectory() as home:

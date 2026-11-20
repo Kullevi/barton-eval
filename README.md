@@ -327,7 +327,7 @@ command prints JSON. Your assistant runs these; you never need to.
 |---|---|
 | `check` | Which tools are installed and logged in. |
 | `mine [--max-files N] [--max-lines N] [--show N]` | Commits that could become tasks, grouped small, medium and large by changed code lines. |
-| `config [--setup CMD] [--link PATH...] [--copy PATH...] [--public yes\|no] [--check-timeout MIN]` | How task folders are prepared: an install command, folders to link (such as `node_modules`), untracked files to copy (such as `.env`), whether the repo is public, and how long one check may take (default 15 minutes). |
+| `config [--setup CMD] [--link PATH...] [--copy PATH...] [--public yes\|no] [--check-timeout MIN] [--codex-sandbox on\|off]` | How task folders are prepared: an install command, folders to link (such as `node_modules`), untracked files to copy (such as `.env`), whether the repo is public, how long one check may take (default 15 minutes), and whether Codex runs in its sandbox (default on). |
 | `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
 | `validate ID` | Check that the task's check fails before the change and passes twice with it. |
 | `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
@@ -371,6 +371,10 @@ command prints JSON. Your assistant runs these; you never need to.
   happen. Please report it, with what was running, as an issue on GitHub.
 - **Codex says commands are blocked on Windows.** Update Barton (below);
   current versions run Codex with the sandbox setting Windows needs.
+- **Codex runs fail with "sandbox cannot start" on Linux.** Some Linux systems,
+  such as recent Ubuntu, do not let Codex's sandbox start. Your assistant can
+  run Codex without it (`config --codex-sandbox off`); the model still works in
+  a throwaway copy of the code.
 
 ## Updating
 

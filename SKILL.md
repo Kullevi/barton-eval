@@ -203,6 +203,9 @@ output files, so your own context stays small. A run already recorded is skipped
 
 An `error` outcome is not a score: it means the run could not happen (login,
 model name, limits, sandbox). Fix the cause and run it again with `--again`.
+If codex's sandbox cannot start on Linux, tell the user in one sentence that
+codex will run without it, in the throwaway task copy, then set
+`barton config --codex-sandbox off`.
 
 ## 6. Judge what has no check
 

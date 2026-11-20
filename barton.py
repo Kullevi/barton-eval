@@ -623,8 +623,10 @@ def cmd_config(args) -> None:
         cfg["public"] = args.public == "yes"
     if args.check_timeout is not None:
         cfg["check_timeout"] = args.check_timeout * 60
+    if args.codex_sandbox is not None:
+        cfg["codex_sandbox"] = args.codex_sandbox == "on"
     b.save_config(cfg)
-    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public", "check_timeout")})
+    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public", "check_timeout", "codex_sandbox")})
 
 
 def cmd_task_remove(args) -> None:
@@ -789,7 +791,8 @@ def prompt_on_stdin(harness: str) -> bool:
     return harness != "agy"
 
 
-def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prompt: str = ""):
+def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prompt: str = "",
+                sandbox: bool = True):
     """The CLI command; for claude and codex the prompt goes on stdin, because Windows
     .cmd shims cut an argument at its first line break and drop every argument after it."""
     if harness == "claude":
@@ -805,9 +808,12 @@ def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prom
         return cmd
     if harness == "codex":
         cmd = resolve_cli("codex") + [
-            "exec", "-m", model, "-s", "workspace-write", "-C", str(folder),
-            "--skip-git-repo-check", "--json", "--ephemeral", "--ignore-user-config",
+            "exec", "-m", model, "-s", "workspace-write" if sandbox else "danger-full-access",
+            "-C", str(folder), "--skip-git-repo-check", "--json", "--ephemeral", "--ignore-user-config",
             "-c", 'web_search="disabled"',
+            # The project's instruction files whole, as Claude reads them; codex's default
+            # cuts them at 32 KB, and the user's own raised limit is in the ignored config.
+            "-c", "project_doc_max_bytes=1048576",
             "--disable", "browser_use", "--disable", "computer_use", "--disable", "apps",
             "-c", 'approval_policy="never"']
         if os.name == "nt":  # without it, workspace-write rejects every command on Windows
@@ -993,15 +999,21 @@ def run_one(b: Barton, task: dict, args) -> dict:
         prompt = task["prompt"] + WRITE_RULES
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
-        cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt)
+        cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt,
+                          sandbox=b.config().get("codex_sandbox", True))
         # A Python that crashes while the model works prints where, instead of dying silently.
         code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, env={"PYTHONFAULTHANDLER": "1"},
                                          stdin_text=prompt if prompt_on_stdin(args.harness) else None)
         u = parse_usage(args.harness, so)
-        if (args.harness == "codex" and "blocked by policy" in se
-                and not u.get("commands_ran")):
+        if args.harness == "codex" and not u.get("commands_ran"):
             # Not one command could run: an environment fault, not a model result.
-            u["error"] = u["error"] or "the sandbox blocked every command the model tried"
+            if "bwrap:" in so or "bwrap:" in se:
+                u["error"] = u["error"] or (
+                    "codex's sandbox cannot start on this computer (Linux here does not let it "
+                    "create its own namespace), so no command could run. The task folder is a "
+                    "throwaway copy; `barton config --codex-sandbox off` runs codex without it.")
+            elif "blocked by policy" in se:
+                u["error"] = u["error"] or "the sandbox blocked every command the model tried"
         if args.harness == "agy" and u.get("tool_denials") and not u.get("commands_ran"):
             # Headless agy refuses tools it may not use and still exits 0.
             u["error"] = u["error"] or "agy refused every tool call: " + "; ".join(u["tool_denials"][:3])
@@ -1447,6 +1459,8 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--public", choices=["yes", "no"], help="is the repo public?")
     sp.add_argument("--check-timeout", type=int, metavar="MINUTES",
                     help="how long one check may take (default 15), longer if checks queue for a build slot")
+    sp.add_argument("--codex-sandbox", choices=["on", "off"],
+                    help="off only where codex's sandbox cannot start; the task folder is a throwaway copy")
     sp = p("task-add", cmd_task_add, "add a task from a JSON file")
     sp.add_argument("file")
     sp = p("task-remove", cmd_task_remove, "remove a task")

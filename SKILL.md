@@ -20,8 +20,18 @@ dress it up as a general benchmark.
 
 Run `barton check`. You need `git`, and the CLI for every model to be tested:
 `claude` (Claude Code) for Anthropic models, `codex` (Codex CLI) for OpenAI
-models, `agy` (Antigravity CLI) for Google's Gemini models. If one is missing or not logged in, fix it without making the user type
-anything:
+models, `agy` (Antigravity CLI) for Google's Gemini models.
+
+Only set up a CLI the user actually uses. `barton check` shows `used_here: true`
+when that CLI's settings folder exists on this computer (it only looks at
+whether the folder exists, never at its contents). A CLI the user uses is
+fixed silently, as below. A CLI they have not used is installed only when they
+ask to test that vendor's model, and then ask first, in one sentence, whether
+they have an account with that vendor they want to use; without a yes, leave it
+out. Never open a login for a service the user has not used or asked for.
+
+When a CLI the user uses, or has just agreed to, is missing or not logged in,
+fix it without making the user type anything:
 
 - **Install** with the vendor's official command, in your own shell:
   Claude Code: `irm https://claude.ai/install.ps1 | iex` (Windows PowerShell) or

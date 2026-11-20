@@ -246,9 +246,12 @@ computer, for example
 
 ### 4. The model CLIs and logins
 
-Follow step 1 of `SKILL.md`: install the Claude Code and/or Codex CLI for the
-models the user wants to test, and start each login yourself, so the user only
-clicks **Authorize** in the browser.
+Follow step 1 of `SKILL.md`. Run `barton check` and set up only the CLIs the
+user already uses on this computer (`used_here: true`): install a missing one
+and start its login yourself, so the user only clicks **Authorize** in the
+browser. Do not install or log in to a vendor the user has not used; that
+happens later, and only if they ask to test that vendor's models and confirm
+they have an account.
 
 ### 5. Done
 

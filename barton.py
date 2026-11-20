@@ -265,6 +265,12 @@ def cmd_check(args) -> None:
         except subprocess.TimeoutExpired:
             ok = None
         info["agy"] = {"version": v, "logged_in": ok}
+    # Has the user used this CLI here? Only whether its settings folder exists; nothing in it is read.
+    home = Path.home()
+    for name, folders in (("claude", [".claude"]), ("codex", [".codex"]),
+                          ("agy", [".gemini/antigravity-cli", ".gemini/antigravity"])):
+        used = any((home / f).is_dir() for f in folders)
+        info[name] = {**(info[name] or {"installed": False}), "used_here": used}
     out(info)
 
 

@@ -275,6 +275,15 @@ class PromptTest(unittest.TestCase):
         got = barton.run_cmd(echo, Path("."), 60, stdin_text=text)[1]
         self.assertEqual(got.splitlines(), text.splitlines())
 
+    def test_check_tells_which_clis_were_used_here(self):
+        with tempfile.TemporaryDirectory() as home:
+            (Path(home) / ".codex").mkdir()
+            with unittest.mock.patch.object(Path, "home", return_value=Path(home)), \
+                    unittest.mock.patch.object(barton, "which", return_value=None):
+                d = call("check")
+        self.assertEqual({k: d[k]["used_here"] for k in ("claude", "codex", "agy")},
+                         {"claude": False, "codex": True, "agy": False})
+
     def test_agy_gets_the_prompt_whole_as_one_argument(self):
         # agy reads no prompt from stdin; it is an .exe, so a multi-line argument survives.
         text = 'Task.\n\nRules with "quotes" after a blank line.'

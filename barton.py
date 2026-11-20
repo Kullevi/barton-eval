@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import io
 import json
 import os
@@ -36,6 +37,7 @@ GIT_ID = ["-c", "user.name=barton", "-c", "user.email=barton@localhost",
           "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false"]
 RUN_TIMEOUT = 45 * 60
 CHECK_TIMEOUT = 15 * 60
+SETUP_TIMEOUT = 3 * 60 * 60  # a monorepo build may first wait for the machine to have room
 JOBS = 8  # runs of one model at the same time; the model's provider is the limit, not this computer
 
 TEST_PATH = re.compile(
@@ -184,39 +186,43 @@ class Barton:
         self.init()
         # Runs finish at the same time, in this process and in others started for
         # other models, so each line is written whole under a lock.
-        with _append_lock, file_lock(self.dir / "results.lock"):
+        with os_lock(self.dir / "results.lock"):
             with (self.dir / "results.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-_append_lock = threading.Lock()
-
-
-class file_lock:
-    """A lock other processes respect: the lock file exists while it is held.
-    A lock older than a minute was left by a crashed process and is taken over."""
+class os_lock:
+    """An exclusive lock between threads and processes, released by the operating
+    system if its holder dies."""
 
     def __init__(self, path: Path):
         self.path = path
 
     def __enter__(self):
-        while True:
-            try:
-                os.close(os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-                return self
-            except FileExistsError:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.f = open(self.path, "a+")
+        if os.name == "nt":
+            import msvcrt
+            while True:
                 try:
-                    if time.time() - self.path.stat().st_mtime > 60:
-                        self.path.unlink()
-                except FileNotFoundError:
+                    self.f.seek(0)
+                    msvcrt.locking(self.f.fileno(), msvcrt.LK_LOCK, 1)
+                    return self
+                except OSError:  # LK_LOCK gives up after ten seconds; keep waiting
                     pass
-                time.sleep(0.05)
+        import fcntl
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
 
     def __exit__(self, *exc):
-        try:
-            self.path.unlink()
-        except FileNotFoundError:
-            pass
+        if os.name == "nt":
+            import msvcrt
+            self.f.seek(0)
+            msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
 
 
 # ---------------------------------------------------------------- check
@@ -346,16 +352,31 @@ def make_folder(b: Barton, sha: str, name: str, files: dict[str, bytes | None] |
     dest = WORK_ROOT / name
     if dest.exists():
         remove_tree(dest)
-    dest.mkdir(parents=True)
     try:
-        fill_folder(b, cfg, sha, dest, files, second_commit)
+        if cfg.get("setup"):
+            copy_folder(cfg, prepared(b, cfg, sha), dest)
+        else:
+            dest.mkdir(parents=True)
+            lay_out(b, cfg, sha, dest)
+        if files is not None:
+            for rel, content in files.items():
+                p = dest / rel
+                if content is None:
+                    if p.exists():
+                        p.unlink()
+                else:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(content)
+            git(dest, "add", "-A")
+            git(dest, "commit", "-q", "--allow-empty", "-m", second_commit or "change")
     except BaseException:
         remove_tree(dest)
         raise
     return dest
 
 
-def fill_folder(b: Barton, cfg: dict, sha: str, dest: Path, files, second_commit) -> None:
+def lay_out(b: Barton, cfg: dict, sha: str, dest: Path) -> None:
+    """The tree at `sha`, the linked and copied files, and a git repo whose only commit is it."""
     extract(b.repo, sha, dest)
     ignore = ["# barton: linked and copied, never part of the work"]
     for rel in cfg.get("link", []):
@@ -371,24 +392,60 @@ def fill_folder(b: Barton, cfg: dict, sha: str, dest: Path, files, second_commit
     (dest / ".git" / "info" / "exclude").write_text("\n".join(ignore) + "\n")
     git(dest, "add", "-A")
     git(dest, "commit", "-q", "--allow-empty", "-m", "start")
-    if cfg.get("setup"):
-        code, so, se, _, to = run_cmd(cfg["setup"], dest, CHECK_TIMEOUT, shell=True)
-        if code != 0:
-            fail(f"Setup command failed in {dest} (exit {code}): {(se or so)[-1500:]}")
-        # Setup output that is not git-ignored is committed so it stays out of diffs.
-        git(dest, "add", "-A", check=False)
-        git(dest, "commit", "-q", "-m", "setup", check=False)
-    if files is not None:
-        for rel, content in files.items():
-            p = dest / rel
-            if content is None:
-                if p.exists():
-                    p.unlink()
-            else:
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_bytes(content)
-        git(dest, "add", "-A")
-        git(dest, "commit", "-q", "--allow-empty", "-m", second_commit or "change")
+
+
+def template_root() -> Path:
+    return WORK_ROOT.parent / (WORK_ROOT.name + "-prepared")
+
+
+def prepared(b: Barton, cfg: dict, sha: str) -> Path:
+    """A folder for `sha` with the setup command already run, made once per commit.
+
+    Setting up can mean installing and building a whole monorepo; doing it once per
+    task, not once per task and model, is what makes large projects practical."""
+    sha = git(b.repo, "rev-parse", sha + "^{commit}").strip()
+    key = hashlib.sha256(json.dumps([str(b.repo.resolve()), cfg.get("setup"), cfg.get("link", []),
+                                     cfg.get("copy", [])]).encode()).hexdigest()[:8]
+    t = template_root() / f"{sha[:12]}-{key}"
+    ready = t.with_name(t.name + ".ready")
+    with os_lock(t.with_name(t.name + ".lock")):  # other runs of this task wait for it
+        if ready.exists():
+            return t
+        if t.exists():
+            remove_tree(t)
+        t.mkdir(parents=True)
+        try:
+            lay_out(b, cfg, sha, t)
+            code, so, se, _, to = run_cmd(cfg["setup"], t, SETUP_TIMEOUT, shell=True)
+            if code != 0 or to:
+                fail(f"Setup command failed for {sha[:12]} (exit {code}): {(se or so)[-1500:]}")
+            # Setup output that is not git-ignored is committed so it stays out of diffs.
+            git(t, "add", "-A", check=False)
+            git(t, "commit", "-q", "-m", "setup", check=False)
+        except BaseException:
+            remove_tree(t)
+            raise
+        ready.write_text(now())
+    return t
+
+
+def copy_folder(cfg: dict, src: Path, dest: Path) -> None:
+    """Copy a prepared folder, its git repo included; linked folders are linked again."""
+    linked = {str(Path(r.strip("/"))) for r in cfg.get("link", [])}
+    if os.name != "nt":  # cp keeps symlinks as links and is much faster on big trees
+        dest.mkdir(parents=True)
+        p = sp_run(["cp", "-a", f"{src}/.", str(dest)], capture_output=True, text=True)
+        if p.returncode != 0:
+            fail(f"Could not copy {src}: {p.stderr[-800:]}")
+        return
+
+    def skip(d, names):  # junctions would be copied as whole folders
+        rel = os.path.relpath(d, src)
+        return [n for n in names if str(Path(rel) / n if rel != "." else Path(n)) in linked]
+    shutil.copytree(src, dest, symlinks=True, ignore=skip)
+    for rel in linked:
+        if (src / rel).exists():
+            link_dir(Path(os.path.realpath(src / rel)), dest / rel)
 
 
 def remove_tree(p: Path) -> None:
@@ -499,7 +556,8 @@ def cmd_validate(args) -> None:
         fail("This task has no check; it is judged blind instead.")
     try:
         before = run_check(b, task, make_folder(b, task["base"], f"v-{task['id']}-before"))
-        after_dir = make_folder(b, task["reference"], f"v-{task['id']}-after")
+        after_dir = make_folder(b, task["base"], f"v-{task['id']}-after",
+                                changed_files(b, task["base"], task["reference"]), "reference")
         after1 = run_check(b, task, after_dir)
         after2 = run_check(b, task, after_dir)
     finally:
@@ -594,12 +652,18 @@ def cmd_plant(args) -> None:
     out({"added": task["id"], **task["plant"], "tried": len(tried) or 1})
 
 
-def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
+def changed_files(b: Barton, base: str, reference: str) -> dict[str, bytes | None]:
+    """Every file the change from base to reference touches, as it is in reference."""
     files: dict[str, bytes | None] = {}
-    for rel in git(b.repo, "diff", "--name-only", "--no-renames", task["base"], task["reference"]).splitlines():
-        p = sp_run(["git", "-C", str(b.repo), "show", f"{task['reference']}:{rel}"],
-                           capture_output=True, stdin=subprocess.DEVNULL)
+    for rel in git(b.repo, "diff", "--name-only", "--no-renames", base, reference).splitlines():
+        p = sp_run(["git", "-C", str(b.repo), "show", f"{reference}:{rel}"],
+                   capture_output=True, stdin=subprocess.DEVNULL)
         files[rel] = p.stdout if p.returncode == 0 else None
+    return files
+
+
+def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
+    files = changed_files(b, task["base"], task["reference"])
     pl = task["plant"]
     lines = files[pl["file"]].decode("utf-8", "replace").split("\n")
     old = lines[pl["line"] - 1]
@@ -1098,12 +1162,13 @@ def cmd_report(args) -> None:
 
 
 def cmd_clean(args) -> None:
-    """Remove task folders left by interrupted or --keep runs."""
-    if WORK_ROOT.exists():
-        for d in WORK_ROOT.iterdir():
-            remove_tree(d)
-        WORK_ROOT.rmdir()
-    out({"cleaned": str(WORK_ROOT)})
+    """Remove task folders left by killed or --keep runs, and the prepared folders."""
+    for root in (WORK_ROOT, template_root()):
+        if root.exists():
+            for d in root.iterdir():
+                remove_tree(d) if d.is_dir() else d.unlink()
+            root.rmdir()
+    out({"cleaned": [str(WORK_ROOT), str(template_root())]})
 
 
 # ---------------------------------------------------------------- main
@@ -1130,7 +1195,7 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--max-lines", type=int, default=1000)
     sp.add_argument("--show", type=int, default=45)
     sp = p("config", cmd_config, "project settings for task folders")
-    sp.add_argument("--setup", help="command run once in each task folder, e.g. 'npm ci'")
+    sp.add_argument("--setup", help="command run once per task commit, e.g. 'npm ci'; each run gets a copy")
     sp.add_argument("--link", nargs="*", help="folders linked from the repo, e.g. node_modules")
     sp.add_argument("--copy", nargs="*", help="untracked files copied in, e.g. .env")
     sp.add_argument("--public", choices=["yes", "no"], help="is the repo public?")

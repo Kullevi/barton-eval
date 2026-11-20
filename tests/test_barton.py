@@ -97,6 +97,22 @@ class RepoTest(unittest.TestCase):
         d = call("validate", "--repo", str(self.repo), "t1")
         self.assertTrue(d["valid"], d)
 
+    def test_setup_runs_once_per_commit(self):
+        count = Path(self.tmp.name) / "setups.txt"
+        setup = (f'"{sys.executable}" -c "import pathlib; pathlib.Path(\'built.txt\').write_text(\'x\');'
+                 f' open(r\'{count}\', \'a\').write(\'.\')"')
+        call("config", "--repo", str(self.repo), "--setup", setup)
+        b = barton.Barton(self.repo)
+        one = barton.make_folder(b, self.fix + "^", "f1")
+        two = barton.make_folder(b, self.fix + "^", "f2", {"calc.py": b"x = 1\n"}, "change")
+        self.assertEqual(count.read_text(), ".")  # built once, copied for the second folder
+        for f in (one, two):
+            self.assertTrue((f / "built.txt").exists())
+            self.assertEqual(sh(f, "status", "--porcelain"), "")
+        self.assertEqual(sh(two, "log", "--format=%s").split(), ["change", "setup", "start"])
+        call("clean")
+        self.assertFalse(barton.template_root().exists())
+
     def test_run_all_runs_tasks_at_once_and_cleans_up(self):
         for i in range(3):
             spec = Path(self.tmp.name) / f"t{i}.json"

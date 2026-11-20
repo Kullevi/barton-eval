@@ -105,10 +105,10 @@ class RepoTest(unittest.TestCase):
         line = (folder / "calc.py").read_text().split("\n")[d["line"] - 1]
         self.assertEqual(line.strip(), d["after"])
         self.assertEqual(sh(folder, "log", "--format=%s").split("\n")[0], "change")
-        (folder / barton.REVIEW_FILE).write_text(json.dumps(
+        reply = "Two issues.\n\n```json\n" + json.dumps(
             [{"file": "calc.py", "line": d["line"] + 1, "problem": "wrong bound"},
-             {"file": "calc.py", "line": 1, "problem": "style"}]))
-        g = barton.grade_review(task, folder, Path(self.tmp.name))
+             {"file": "calc.py", "line": 1, "problem": "style"}]) + "\n```\n"
+        g = barton.grade_review(task, folder, Path(self.tmp.name), reply)
         self.assertEqual(g["outcome"], "found")
         self.assertEqual(g["other_findings"], 1)
 
@@ -124,6 +124,17 @@ class RepoTest(unittest.TestCase):
         self.assertTrue((folder / "mathx.py").exists())
         self.assertFalse((folder / "calc.py").exists())
         self.assertEqual(d["file"], "mathx.py")
+
+    def test_mine_counts_a_merged_branch_as_one_commit(self):
+        sh(self.repo, "checkout", "-q", "-b", "feature")
+        (self.repo / "calc.py").write_text((self.repo / "calc.py").read_text() + "\n\ndef neg(x):\n    return -x\n")
+        sh(self.repo, "commit", "-q", "-am", "Add neg")
+        sh(self.repo, "checkout", "-q", "main")
+        sh(self.repo, "merge", "-q", "--no-ff", "-m", "Merge pull request #1", "feature")
+        subjects = [c["subject"] for g in ("small", "medium", "large")
+                    for c in call("mine", "--repo", str(self.repo))[g]]
+        self.assertIn("Merge pull request #1", subjects)
+        self.assertNotIn("Add neg", subjects)
 
     def test_review_without_file_goes_to_the_judge(self):
         task = {"plant": {"file": "a.py", "line": 3}}

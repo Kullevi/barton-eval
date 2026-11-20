@@ -34,7 +34,6 @@ GIT_ID = ["-c", "user.name=barton", "-c", "user.email=barton@localhost",
           "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false"]
 RUN_TIMEOUT = 45 * 60
 CHECK_TIMEOUT = 15 * 60
-REVIEW_FILE = "barton-review.json"
 
 TEST_PATH = re.compile(
     r"(^|/)(tests?|__tests__|spec|specs)/|(^|/)test_[^/]+\.py$|_test\.(py|go|rb)$"
@@ -229,7 +228,7 @@ def size_of(code_lines: int) -> str:
 def cmd_mine(args) -> None:
     """List commits that could become tasks, grouped by size so a run can mix difficulty."""
     b = Barton(Path(args.repo))
-    log = git(b.repo, "log", "--first-parent", "--no-merges", f"-n{args.limit}",
+    log = git(b.repo, "log", "--first-parent", "--diff-merges=first-parent", f"-n{args.limit}",
               "--numstat", "--format=@@%H%x09%aI%x09%s")
     commits, cur = [], None
     for line in log.splitlines():
@@ -554,12 +553,11 @@ def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
 WRITE_RULES = ("\n\nWork only in the current folder. Make the change in the code; "
                "add or update tests if the project has them. You may run the project's "
                "commands. Do not use the internet. When you are done, stop.")
-REVIEW_RULES = ("\n\nDo not change the project's code. Report only bugs you are confident "
-                "about. Do not use the internet. As your last step, create the file "
-                f"`{REVIEW_FILE}` in the current folder: a JSON list with one object per bug, "
+REVIEW_RULES = ("\n\nDo not change any files. Report only bugs you are confident about. "
+                "Do not use the internet. End your reply with the bugs as a JSON code block: "
+                "```json followed by a list with one object per bug, "
                 '{"file": "<path>", "line": <line number in the current file>, '
-                '"problem": "<one sentence>"}, or [] if you found none. This file is how your '
-                "review is collected; a review given only in your reply may be lost.")
+                '"problem": "<one sentence>"}, or [] if you found none.')
 
 
 def harness_cmd(harness: str, model: str, effort: str | None, prompt: str, folder: Path):
@@ -721,19 +719,36 @@ def cmd_run(args) -> None:
     out({"result": row})
 
 
+CLIP = 300_000  # characters of one diff or review in a judge bundle
+
+
+def clipped(text: str) -> str:
+    if len(text) <= CLIP:
+        return text
+    return text[:CLIP] + f"\n[... clipped here: {len(text) - CLIP} more characters not shown]\n"
+
+
+def review_list(final: str):
+    """The last ```json block in the reply that holds a list, or None."""
+    for block in reversed(re.findall(r"```json\s*\n(.*?)```", final, re.S)):
+        try:
+            v = json.loads(block)
+        except ValueError:
+            continue
+        if isinstance(v, list):
+            return v
+    return None
+
+
 def grade_review(task: dict, folder: Path, run_dir: Path, final: str = "") -> dict:
-    """Match the review file against the answer key; without a file, a judge decides."""
-    p = folder / REVIEW_FILE
-    try:
-        findings = json.loads(p.read_text(encoding="utf-8"))
-        if not isinstance(findings, list):
-            raise ValueError
-    except (OSError, ValueError):
-        # Models sometimes answer only in their reply. Reading free text for a match
-        # is a judgment, so it goes to the blind judge rather than to a pattern.
-        (run_dir / "final.txt").write_text(final, encoding="utf-8")
+    """Match the reply's bug list against the answer key; without a list, a judge decides."""
+    (run_dir / "final.txt").write_text(final, encoding="utf-8")
+    findings = review_list(final)
+    if findings is None:
+        # Reading free text for a match is a judgment, so it goes to the blind judge
+        # rather than to a pattern.
         return {"outcome": "pending" if final.strip() else "missed", "method": "judge",
-                "note": f"no valid {REVIEW_FILE}"}
+                "note": "no JSON bug list in the reply"}
     (run_dir / "review.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False),
                                          encoding="utf-8")
     pl = task["plant"]
@@ -792,16 +807,16 @@ def cmd_blind(args) -> None:
         if task.get("reference"):
             ref = git(b.repo, "diff", task["base"], task["reference"])
             parts.append("# How the project's own author did it (one valid way, not the only "
-                         f"one)\n\n```diff\n{ref[:60000]}\n```\n")
+                         f"one)\n\n```diff\n{clipped(ref)}\n```\n")
     for i, r in enumerate(runs):
         label = chr(ord("A") + i)
         labels[label] = r["run"]
         if task["kind"] == "review":
             text = (b.dir / "runs" / r["run"] / "final.txt").read_text(encoding="utf-8")
-            parts.append(f"# Review {label}\n\n{anonymize(text, runs)[:30000]}\n")
+            parts.append(f"# Review {label}\n\n{clipped(anonymize(text, runs))}\n")
         else:
             patch = (b.dir / "runs" / r["run"] / "diff.patch").read_text(encoding="utf-8")
-            parts.append(f"# Solution {label}\n\n```diff\n{anonymize(patch, runs)[:60000]}\n```\n")
+            parts.append(f"# Solution {label}\n\n```diff\n{clipped(anonymize(patch, runs))}\n```\n")
     bundle = b.dir / "blind" / f"{task['id']}.md"
     bundle.parent.mkdir(parents=True, exist_ok=True)
     bundle.write_text("\n".join(parts), encoding="utf-8")
@@ -879,11 +894,11 @@ def cmd_pairs(args) -> None:
                          "not a merit in itself. Answer `first`, `second` or `tie`.\n"]
                 if ref:
                     parts.append("# The project author's own change (for context; not the "
-                                 f"answer key)\n\n```diff\n{ref[:40000]}\n```\n")
+                                 f"answer key)\n\n```diff\n{clipped(ref)}\n```\n")
                 for title, r in (("First", first), ("Second", second)):
                     patch = (b.dir / "runs" / r["run"] / "diff.patch").read_text(encoding="utf-8")
                     parts.append(f"# {title} solution\n\n```diff\n"
-                                 f"{anonymize(patch, runs)[:60000]}\n```\n")
+                                 f"{clipped(anonymize(patch, runs))}\n```\n")
                 (pdir / f"{pid}.md").write_text("\n".join(parts), encoding="utf-8")
                 written.append({"pair": pid, "bundle": str(pdir / f"{pid}.md")})
     (pdir / "labels.json").write_text(json.dumps(labels, indent=1), encoding="utf-8")

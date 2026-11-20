@@ -152,8 +152,8 @@ model name, limits, sandbox). Fix the cause and run it again with `--again`.
 For tasks with outcome `pending`, run `barton blind <task>`. It writes an
 anonymous bundle with the task, the original author's change as a reference,
 and every solution labeled A, B, C in random order, with model names and
-folder paths removed. Reviews also end up here when a model answered only in
-its reply instead of writing the review file (common); then the bundle holds
+folder paths removed. Reviews also end up here when a model's reply ends without
+a JSON bug list; then the bundle holds
 the answer key and each review, and the judge decides `found` or `missed`. Give the bundle to a judge
 that does not know which model wrote what: preferably the other vendor's CLI
 (for example `codex exec -s read-only "<instructions>"` when you are Claude), or

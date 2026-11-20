@@ -346,8 +346,12 @@ def make_folder(b: Barton, sha: str, name: str, files: dict[str, bytes | None] |
 def remove_tree(p: Path) -> None:
     """Delete a task folder without following linked folders into the user's repo."""
     def onerror(func, path, _exc):
-        os.chmod(path, 0o700)
-        func(path)
+        # Git's background maintenance can delete its own lock files mid-removal.
+        try:
+            os.chmod(path, 0o700)
+            func(path)
+        except FileNotFoundError:
+            pass
     if os.name == "nt":  # rd /s removes junctions themselves, not their targets
         sp_run(["cmd", "/c", "rmdir", "/s", "/q", str(p)], capture_output=True)
     if p.exists():

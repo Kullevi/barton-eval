@@ -106,7 +106,7 @@ passed, blind judges from both vendors preferred GPT-6.2 Sol's solution most oft
 - **The limits.** A judge is still a model and can be wrong; a handful of tasks
   is a small sample; a public repository may have been in a model's training
   data (the card says so); and the result is the model *in that harness*
-  (Claude Code or Codex CLI), which the card also says. Running more attempts
+  (Claude Code, Codex CLI or Antigravity CLI), which the card also says. Running more attempts
   per setting gives a fairer picture.
 
 Details and the research behind these choices are in
@@ -124,14 +124,18 @@ model at once), so the whole run takes about as long as its slowest tasks, not
 the sum. Larger tasks, higher thinking levels and more attempts cost more. Your
 assistant gives a rough figure before it starts, and the cards show the
 actual cost: as reported by Claude Code, and estimated from tokens for Codex
-(marked "est.", from `prices.json`). On a subscription you may not pay per run
+(marked "est.", from `prices.json`). The Antigravity CLI reports tokens but no
+cost, so Gemini runs show tokens and time only until `prices.json` has the
+model's price. On a subscription you may not pay per run
 at all.
 
 ## Works on
 
 Windows 10/11, macOS and Linux, with Python 3.9 or newer and Git. To test
 Anthropic models you need [Claude Code](https://claude.com/claude-code); to
-test OpenAI models, the [Codex CLI](https://github.com/openai/codex).
+test OpenAI models, the [Codex CLI](https://github.com/openai/codex); to test
+Google's Gemini models, the
+[Antigravity CLI](https://antigravity.google/docs/cli/headless/) (`agy`).
 Your assistant installs what is missing. On Windows, Barton runs every
 program without a console window, so nothing flashes up while you work.
 
@@ -296,7 +300,7 @@ command prints JSON. Your assistant runs these; you never need to.
 | `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
 | `validate ID` | Check that the task's check fails before the change and passes twice with it. |
 | `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
-| `run ID... \| all --harness claude\|codex --model M [--effort E] [--attempt N] [--jobs N] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. |
+| `run ID... \| all --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. |
 | `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
 | `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
 | `status` | Progress and scores so far. |

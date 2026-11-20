@@ -230,7 +230,7 @@ class os_lock:
 def cmd_check(args) -> None:
     """What is installed and logged in, as JSON for the test leader."""
     info: dict = {"barton": VERSION, "python": sys.version.split()[0],
-                  "platform": sys.platform, "git": None, "claude": None, "codex": None}
+                  "platform": sys.platform, "git": None, "claude": None, "codex": None, "agy": None}
     g = which("git")
     if g:
         info["git"] = sp_run([g, "--version"], capture_output=True,
@@ -256,6 +256,15 @@ def cmd_check(args) -> None:
         text = (st.stdout + st.stderr).strip()
         info["codex"] = {"version": v, "logged_in": st.returncode == 0 and "Logged in" in text,
                          "auth": text.splitlines()[0] if text else None}
+    a = which("agy")
+    if a:
+        v = sp_run([a, "--version"], capture_output=True, text=True).stdout.strip()
+        try:  # listing models needs a signed-in account
+            st = sp_run([a, "models"], capture_output=True, text=True, timeout=60)
+            ok = st.returncode == 0 and "\t" in st.stdout
+        except subprocess.TimeoutExpired:
+            ok = None
+        info["agy"] = {"version": v, "logged_in": ok}
     out(info)
 
 
@@ -685,9 +694,20 @@ REVIEW_RULES = ("\n\nDo not change any files. Report only bugs you are confident
                 '"problem": "<one sentence>"}, or [] if you found none.')
 
 
-def harness_cmd(harness: str, model: str, effort: str | None, folder: Path):
-    """The CLI command; the prompt goes on stdin, because Windows .cmd shims cut an
-    argument at its first line break and drop every argument after it."""
+# The tools through which a model reaches the internet in Antigravity; agy has no switch
+# to turn them off in print mode, so their use is counted and shown instead.
+AGY_WEB = re.compile(r"^(search_web|read_url\w*|browser_\w+)$")
+
+
+def prompt_on_stdin(harness: str) -> bool:
+    """agy reads its prompt only from -p; it is a real executable, so the whole prompt
+    survives as one argument. The other CLIs are .cmd shims on Windows."""
+    return harness != "agy"
+
+
+def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prompt: str = ""):
+    """The CLI command; for claude and codex the prompt goes on stdin, because Windows
+    .cmd shims cut an argument at its first line break and drop every argument after it."""
     if harness == "claude":
         cmd = resolve_cli("claude") + [
             "-p", "--model", model, "--output-format", "json",
@@ -711,7 +731,17 @@ def harness_cmd(harness: str, model: str, effort: str | None, folder: Path):
         if effort:
             cmd += ["-c", f'model_reasoning_effort="{effort}"']
         return cmd + ["-"]
-    fail(f"Unknown harness '{harness}'. Use 'claude' or 'codex'.")
+    if harness == "agy":
+        exe = resolve_cli("agy")
+        if exe[0].lower().endswith((".cmd", ".bat")):
+            fail("Barton needs agy.exe itself, not a .cmd wrapper, to pass the prompt whole.")
+        # The model name is pinned: agy's default "Auto" may pick another model.
+        cmd = exe + ["-p", prompt, "--model", model, "--output-format", "stream-json",
+                     "--dangerously-skip-permissions", "--disable-slash-commands"]
+        if effort:
+            cmd += ["--effort", effort]
+        return cmd
+    fail(f"Unknown harness '{harness}'. Use 'claude', 'codex' or 'agy'.")
 
 
 def parse_usage(harness: str, stdout: str) -> dict:
@@ -733,6 +763,8 @@ def parse_usage(harness: str, stdout: str) -> dict:
         if j.get("is_error") or j.get("subtype") not in (None, "success"):
             u["error"] = str(j.get("result") or j.get("subtype") or "error")[:300]
         return u
+    if harness == "agy":
+        return parse_agy(stdout, u)
     saw_turn, last_error = False, None
     for line in stdout.splitlines():
         try:
@@ -756,6 +788,45 @@ def parse_usage(harness: str, stdout: str) -> dict:
                 u["final"] = (u.get("final", "") + "\n\n" + str(it.get("text") or "")).strip()
     if not saw_turn:  # a completed turn after a transient error is a real run
         u["error"] = last_error or "codex finished no turn"
+    return u
+
+
+def parse_agy(stdout: str, u: dict) -> dict:
+    """agy --output-format stream-json: an init event naming the resolved model, one
+    step_update per step, and a result event with the totals."""
+    result, web, denied, tools = None, 0, [], 0
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("event") == "init":
+            u["model_seen"] = (ev.get("init") or {}).get("model")
+        elif ev.get("event") == "step_update":
+            st = ev.get("step_update") or {}
+            if st.get("step_type") != "tool" or st.get("state") == "ACTIVE":
+                continue
+            name = str(st.get("tool_name") or "")
+            if st.get("state") == "DONE":
+                tools += 1
+                web += bool(AGY_WEB.match(name))
+            else:  # a refused or failed tool call
+                denied.append(f"{name}: {st.get('state')}")
+        elif ev.get("event") == "result":
+            result = ev.get("result") or {}
+    u["commands_ran"], u["web_used"] = tools, web
+    if denied:
+        u["tool_denials"] = denied[:20]
+    if result is None:
+        u["error"] = "agy gave no result"
+        return u
+    us = result.get("usage") or {}
+    u["input"] = int(us.get("input_tokens", 0))
+    u["cached"] = int(us.get("cache_read_tokens", 0))
+    u["output"] = int(us.get("output_tokens", 0)) + int(us.get("thinking_tokens", 0))
+    u["final"] = str(result.get("response") or "")
+    if result.get("status") != "SUCCESS":
+        u["error"] = str(result.get("error") or result.get("status") or "error")[:300]
     return u
 
 
@@ -822,8 +893,9 @@ def run_one(b: Barton, task: dict, args) -> dict:
         prompt = task["prompt"] + WRITE_RULES
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
-        cmd = harness_cmd(args.harness, args.model, args.effort, folder)
-        code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, stdin_text=prompt)
+        cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt)
+        code, so, se, secs, to = run_cmd(cmd, folder, args.timeout,
+                                         stdin_text=prompt if prompt_on_stdin(args.harness) else None)
         u = parse_usage(args.harness, so)
         if to:
             u["error"] = u["error"] or f"timed out after {args.timeout} s"
@@ -831,6 +903,9 @@ def run_one(b: Barton, task: dict, args) -> dict:
                 and not u.get("commands_ran")):
             # Not one command could run: an environment fault, not a model result.
             u["error"] = u["error"] or "the sandbox blocked every command the model tried"
+        if args.harness == "agy" and u.get("tool_denials") and not u.get("commands_ran"):
+            # Headless agy refuses tools it may not use and still exits 0.
+            u["error"] = u["error"] or "agy refused every tool call: " + "; ".join(u["tool_denials"][:3])
         run_dir = b.dir / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "output.txt").write_text(so[-200000:] + "\n--- stderr ---\n" + se[-20000:],
@@ -840,6 +915,9 @@ def run_one(b: Barton, task: dict, args) -> dict:
                "effort": args.effort, "attempt": attempt, "run": run_id, "at": now(),
                "seconds": round(secs, 1), "tokens": {k: u[k] for k in ("input", "cached", "output")},
                "model_seen": u["model_seen"]}
+        for k in ("web_used", "tool_denials"):  # agy only: it cannot switch the web off
+            if u.get(k):
+                row[k] = u[k]
         cost = u["cost_usd"]
         row["cost_usd"], row["cost_kind"] = ((round(cost, 4), "reported") if cost is not None
                                              else (estimate_cost(args.model, u), "estimated"))
@@ -1217,7 +1295,7 @@ def main(argv: list[str] | None = None) -> None:
     sp = p("run", cmd_run, "run one model on tasks, several at once, and record each")
     sp.add_argument("tasks", nargs="+", help="task ids, or all")
     sp.add_argument("--jobs", type=int, default=JOBS, help="runs at the same time")
-    sp.add_argument("--harness", required=True, choices=["claude", "codex"])
+    sp.add_argument("--harness", required=True, choices=["claude", "codex", "agy"])
     sp.add_argument("--model", required=True)
     sp.add_argument("--effort")
     sp.add_argument("--attempt", type=int, default=1)

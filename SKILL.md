@@ -20,7 +20,7 @@ dress it up as a general benchmark.
 
 Run `barton check`. You need `git`, and the CLI for every model to be tested:
 `claude` (Claude Code) for Anthropic models, `codex` (Codex CLI) for OpenAI
-models. If one is missing or not logged in, fix it without making the user type
+models, `agy` (Antigravity CLI) for Google's Gemini models. If one is missing or not logged in, fix it without making the user type
 anything:
 
 - **Install** with the vendor's official command, in your own shell:
@@ -28,11 +28,14 @@ anything:
   `curl -fsSL https://claude.ai/install.sh | bash` (macOS, Linux).
   Codex CLI: `npm install -g @openai/codex` when Node is present, else
   `brew install codex` on macOS; otherwise follow OpenAI's current install page.
+  Antigravity CLI: `irm https://antigravity.google/cli/install.ps1 | iex`
+  (Windows) or `curl -fsSL https://antigravity.google/cli/install.sh | bash`.
   If a command fails, look up the vendor's current instructions rather than
   guessing. After installing, call the CLI by its full path if your shell does
   not find it yet; do not ask the user to restart anything.
 - **Log in** by starting the login yourself in the background
-  (`claude auth login`, or `codex login`) and telling the user: "A browser tab
+  (`claude auth login`, `codex login`, or `agy` once, which opens the browser)
+  and telling the user: "A browser tab
   is opening. Click **Authorize**, then come back here." The browser is usually
   already signed in to claude.ai or ChatGPT, so it is one click. Run
   `barton check` again until it shows `logged_in: true`. The desktop apps do not
@@ -138,7 +141,12 @@ change it. Use a new id instead.
 For every model, effort level and attempt, start one command, and start them
 all at the same time in the background:
 
-`barton run all --harness claude|codex --model <model id> [--effort <level>] [--attempt <n>]`
+`barton run all --harness claude|codex|agy --model <model id> [--effort <level>] [--attempt <n>]`
+
+For `agy`, list the model ids with `agy models`; the thinking level is part of
+the id (for example `gemini-4-argon-medium`), so leave out `--effort`. agy has
+no switch to turn off web search, so Barton counts the model's web and browser
+calls and records them as `web_used`; mention it if any run used the web.
 
 It runs every task of that model at once (up to 8; `--jobs <n>` changes it,
 lower it if the provider reports rate limits) and prints one result per task as

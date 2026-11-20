@@ -275,6 +275,20 @@ class PromptTest(unittest.TestCase):
         got = barton.run_cmd(echo, Path("."), 60, stdin_text=text)[1]
         self.assertEqual(got.splitlines(), text.splitlines())
 
+    def test_agy_gets_the_prompt_whole_as_one_argument(self):
+        # agy reads no prompt from stdin; it is an .exe, so a multi-line argument survives.
+        text = 'Task.\n\nRules with "quotes" after a blank line.'
+        with unittest.mock.patch.object(barton, "resolve_cli", return_value=["agy.exe"]):
+            cmd = barton.harness_cmd("agy", "gemini-4-argon-medium", None, Path("."), text)
+        self.assertEqual(cmd[cmd.index("-p") + 1], text)
+        self.assertEqual(cmd[cmd.index("--model") + 1], "gemini-4-argon-medium")
+        self.assertFalse(barton.prompt_on_stdin("agy"))
+        echo = [sys.executable, "-c", "import sys; sys.stdout.write(sys.argv[1])", text]
+        self.assertEqual(barton.run_cmd(echo, Path("."), 60)[1].splitlines(), text.splitlines())
+        with unittest.mock.patch.object(barton, "resolve_cli", return_value=["agy.cmd"]), \
+                self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+            barton.harness_cmd("agy", "m", None, Path("."), text)
+
 
 class ParseTest(unittest.TestCase):
     def test_size_buckets(self):
@@ -304,6 +318,33 @@ class ParseTest(unittest.TestCase):
         self.assertEqual((u["input"], u["cached"], u["output"]), (40, 60, 9))
         self.assertIsNone(u["error"])
         self.assertEqual(barton.parse_usage("codex", "")["error"], "codex finished no turn")
+
+    def test_agy_stream(self):
+        step = lambda i, state, name: {"event": "step_update", "step_update": {
+            "step_index": i, "state": state, "step_type": "tool", "tool_name": name}}
+        lines = [{"event": "init", "init": {"model": "gemini-4-argon-medium"}},
+                 step(1, "ACTIVE", "run_command"), step(1, "DONE", "run_command"),
+                 step(2, "DONE", "search_web"), step(3, "DONE", "browser_get_dom"),
+                 {"event": "result", "result": {"status": "SUCCESS", "response": "Done.",
+                  "usage": {"input_tokens": 100, "output_tokens": 9, "thinking_tokens": 4,
+                            "cache_read_tokens": 60}}}]
+        u = barton.parse_usage("agy", "\n".join(json.dumps(x) for x in lines))
+        self.assertEqual((u["input"], u["cached"], u["output"]), (100, 60, 13))
+        self.assertEqual((u["model_seen"], u["web_used"], u["commands_ran"]),
+                         ("gemini-4-argon-medium", 2, 3))
+        self.assertEqual(u["final"], "Done.")
+        self.assertIsNone(u["error"])
+        self.assertEqual(barton.parse_usage("agy", "")["error"], "agy gave no result")
+        failed = lines[:1] + [{"event": "result", "result": {"status": "ERROR", "error": "auth required"}}]
+        self.assertIn("auth", barton.parse_usage("agy", "\n".join(json.dumps(x) for x in failed))["error"])
+
+    def test_agy_refused_tools_are_recorded(self):
+        lines = [{"event": "step_update", "step_update": {"state": "DENIED", "step_type": "tool",
+                                                         "tool_name": "write_file"}},
+                 {"event": "result", "result": {"status": "SUCCESS", "response": "", "usage": {}}}]
+        u = barton.parse_usage("agy", "\n".join(json.dumps(x) for x in lines))
+        self.assertEqual(u["tool_denials"], ["write_file: DENIED"])
+        self.assertEqual(u["commands_ran"], 0)
 
     def test_estimated_cost(self):
         u = {"input": 1_000_000, "cached": 1_000_000, "output": 1_000_000}

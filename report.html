@@ -128,8 +128,8 @@ function costText(s) {
 }
 
 function methodShort(list) {
-  const names = { tests: "Project's own tests", check: "Check from the original change", judge: "Blind AI judge",
-    planted: "Planted bugs, known answer", "no change": "No change made" };
+  const names = { tests: "Project's tests", check: "Check from the original change", judge: "Blind AI judge",
+    planted: "Planted bugs", "no change": "No change made" };
   const m = new Set(); list.forEach(s => s.methods.forEach(x => m.add(x)));
   return [...m].map(x => names[x] || x).join(" + ");
 }
@@ -297,7 +297,7 @@ function drawBlocks(x, T, segs, colour, X, Y, w, h) {
 // Rows of one panel. Large rows carry the effort, harness, time and cost on a second line.
 function drawRows(x, T, s, rows, box, large) {
   if (!rows.length) return;
-  const minH = (large ? 36 : 26) * s, maxH = (large ? 76 : 40) * s;
+  const minH = (large ? 36 : 22) * s, maxH = (large ? 76 : 40) * s;
   let shown = rows, more = 0;
   if (box.h / rows.length < minH) {
     const k = Math.max(1, Math.floor(box.h / minH) - 1);

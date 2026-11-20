@@ -7,7 +7,7 @@ with the models you use today. You get cards you can share: how many of your
 tasks each model solved, whose solution was better when both worked, how many
 planted bugs it caught in code review, and what it took in time and money.
 
-![The Barton results page: the coding tasks card from a real run on the open-source tomli library](docs/report.png)
+![The Barton results page from a real run on the open-source click library: Claude Opus 5.5 and GPT-6.2 Sol and 6.1 Sol on 18 coding tasks and 5 reviews](docs/report.png)
 
 **To get started, give the link to this page to Claude or Codex and ask it to
 set up Barton for you.** Then say something like *"test GPT-6.2 Sol on my
@@ -57,10 +57,11 @@ on exactly the same tasks.
 - **History.** Results stay in your project (`.barton/`, never committed), so a
   model you test next month is compared on exactly the same tasks.
 
-<img src="docs/card.png" width="600" alt="A share card: which model wrote the better solution when both passed, from the same run">
+<img src="docs/card.png" width="600" alt="The share image from the same run, in dark mode">
 
-*A share card from the same run. 4 comparisons is a small sample, and the card
-says how it was judged.*
+*The share image from the same run, in dark mode. 13 against 12 solved is within
+what 18 tasks can show, so the card says "too close to call"; where both models
+passed, blind judges from both vendors preferred GPT-6.2 Sol's solution most often.*
 
 ## Who does what
 
@@ -114,9 +115,10 @@ Details and the research behind these choices are in
 ## Time and cost
 
 Each task runs the real model through its own CLI, so a run uses your Claude or
-ChatGPT plan, or API credit, like any other session. In our trial on the
-[tomli](https://github.com/hukkin/tomli) library, four coding tasks took about
-four minutes and about $0.34 at list API prices per model, at low effort.
+ChatGPT plan, or API credit, like any other session. In our run on the
+[click](https://github.com/pallets/click) library, 18 coding tasks and 5 reviews
+took each model 46 to 67 minutes at medium effort: $11.16 for Claude Opus 5.5 as
+reported by Claude Code, and about $3 to $4 estimated for each GPT model.
 Larger tasks, higher thinking levels and more attempts cost more. Your
 assistant gives a rough figure before it starts, and the cards show the
 actual cost: as reported by Claude Code, and estimated from tokens for Codex

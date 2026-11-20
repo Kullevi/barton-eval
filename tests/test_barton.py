@@ -220,6 +220,12 @@ class RepoTest(unittest.TestCase):
         g = barton.grade_review(task, tmp, tmp, "Line 3 of a.py flips the bound.")
         self.assertEqual((g["outcome"], g["method"]), ("pending", "judge"))
 
+    def test_check_timeout_is_set_per_project(self):
+        b = barton.Barton(self.repo)
+        self.assertEqual(barton.check_timeout(b), barton.CHECK_TIMEOUT)
+        call("config", "--repo", str(self.repo), "--check-timeout", "120")
+        self.assertEqual(barton.check_timeout(b), 7200)
+
     def test_unknown_cost_stays_unknown_in_status(self):
         b = barton.Barton(self.repo)
         b.save_config({"tasks": [{"id": "t0.5", "kind": "write"}, {"id": "tNone", "kind": "write"}]})

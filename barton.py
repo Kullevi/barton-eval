@@ -566,7 +566,7 @@ def run_check(b: Barton, task: dict, folder: Path) -> dict:
         else:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(content)
-    code, so, se, secs, to = run_cmd(task["check"]["command"], folder, CHECK_TIMEOUT, shell=True,
+    code, so, se, secs, to = run_cmd(task["check"]["command"], folder, check_timeout(b), shell=True,
                                      env=task["check"].get("env"))
     return {"passed": code == 0 and not to, "exit": code, "timed_out": to,
             "seconds": round(secs, 1), "tail": (so + se)[-1200:]}
@@ -602,6 +602,12 @@ def save_task(b: Barton, task: dict) -> None:
     b.save_config(cfg)
 
 
+def check_timeout(b: Barton) -> int:
+    """Seconds a check may take. A project whose checks wait in a queue for a free build
+    slot sets more, so waiting is never scored as the model's failure."""
+    return int(b.config().get("check_timeout") or CHECK_TIMEOUT)
+
+
 def cmd_config(args) -> None:
     """Project settings: how to prepare a task folder so the code can run."""
     b = Barton(Path(args.repo))
@@ -614,8 +620,10 @@ def cmd_config(args) -> None:
         cfg["copy"] = [x for x in args.copy if x]
     if args.public is not None:
         cfg["public"] = args.public == "yes"
+    if args.check_timeout is not None:
+        cfg["check_timeout"] = args.check_timeout * 60
     b.save_config(cfg)
-    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public")})
+    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public", "check_timeout")})
 
 
 def cmd_task_remove(args) -> None:
@@ -722,7 +730,7 @@ def cmd_plant(args) -> None:
         name = f"p-{args.id}"
         folder = make_folder(b, base, name, review_files(b, task), "change")
         try:
-            code, so, se, _, to = run_cmd(args.check, folder, CHECK_TIMEOUT, shell=True, env=env)
+            code, so, se, _, to = run_cmd(args.check, folder, check_timeout(b), shell=True, env=env)
         finally:
             remove_tree(folder)
         tried.append({"line": line_no, "after": new_text.strip(), "tests_failed": code != 0})
@@ -1366,6 +1374,8 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--link", nargs="*", help="folders linked from the repo, e.g. node_modules")
     sp.add_argument("--copy", nargs="*", help="untracked files copied in, e.g. .env")
     sp.add_argument("--public", choices=["yes", "no"], help="is the repo public?")
+    sp.add_argument("--check-timeout", type=int, metavar="MINUTES",
+                    help="how long one check may take (default 15), longer if checks queue for a build slot")
     sp = p("task-add", cmd_task_add, "add a task from a JSON file")
     sp.add_argument("file")
     sp = p("task-remove", cmd_task_remove, "remove a task")

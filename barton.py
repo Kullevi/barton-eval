@@ -1549,6 +1549,13 @@ def cmd_report(args) -> None:
     for r in rows:
         if r["outcome"] != "error":
             done.setdefault(setting(r), set()).add(r["task"])
+    # A setting with results for under half the tasks of the most complete one (a run
+    # stopped early, a model tried on a few tasks) is left off and named, so it does
+    # not shrink every other model's comparison to the few tasks it reached.
+    most = max((len(v) for v in done.values()), default=0)
+    partial = sorted(s for s, v in done.items() if len(v) * 2 < most)
+    partial_done = {s: done.pop(s) for s in partial}
+    rows = [r for r in rows if setting(r) not in partial]
     shared = set.intersection(*done.values()) if done else set()
     left_out = sorted({r["task"] for r in rows} - shared)
     tasks = [t for t in cfg.get("tasks", []) if t["id"] in shared]
@@ -1558,7 +1565,9 @@ def cmd_report(args) -> None:
             "tasks": [{k: t.get(k) for k in ("id", "kind", "source", "prompt")}
                       | {"check": bool(t.get("check"))} for t in tasks],
             "results": [r for r in rows if r["task"] in shared],
-            "quality": [q for q in quality(b) if q.get("task") in shared],
+            "partial": [{"setting": s, "tasks": len(v)} for s, v in partial_done.items()],
+            "quality": [q for q in quality(b) if q.get("task") in shared
+                        and q["a"] not in partial and q["b"] not in partial],
             "quality_judges": sorted({p["judge_model"] for p in b.prefs() if p["task"] in shared})}
     tpl = (HERE / "report.html").read_text(encoding="utf-8")
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
@@ -1569,6 +1578,8 @@ def cmd_report(args) -> None:
     if not args.no_open:
         webbrowser.open(dest.as_uri())
     out({"report": str(dest), "tasks": len(tasks),
+         **({"partial": data["partial"], "partial_note": "Too few results to compare yet, so "
+             "left off the cards; run their remaining tasks to include them."} if partial else {}),
          **({"left_out": left_out, "note": "Left out because not every model has a result for "
              "them yet; run what is missing and make the report again."} if left_out else {})})
 

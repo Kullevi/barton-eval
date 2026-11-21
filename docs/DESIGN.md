@@ -109,6 +109,11 @@ same tasks, however much the code has moved on. Scores are never relative to
 other models: a solution is solved or not on its own, and a review finds the
 planted bug or not.
 
+The cards compare every model on the tasks they all have results for. A setting
+with results for under half the tasks of the most complete one, such as a run
+stopped early, is left off and named instead, so it does not cut everyone else's
+comparison down to the few tasks it reached.
+
 ## Honest cards
 
 - Counts, not percentages: "7 / 10" shows the sample size; one block per task

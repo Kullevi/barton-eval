@@ -510,8 +510,8 @@ function render() {
   $("hide").textContent = hidden() ? "Names hidden" : "Hide names";
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton results · ${repoName()}`;
-  const off = (DATA.excluded || []).length;
-  $("meta").textContent = `${plural((DATA.tasks || []).length, "task")}${off ? ` (${off} faulty left off)` : ""} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
+  const off = (DATA.excluded || []).length, few = (DATA.partial || []).length;
+  $("meta").textContent = `${plural((DATA.tasks || []).length, "task")}${off ? ` (${off} faulty left off)` : ""}${few ? ` · ${plural(few, "setting")} with too few results left off` : ""} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
   const c = $("dash"), w = $("wrap").clientWidth - 32;
   const avail = innerHeight - $("wrap").getBoundingClientRect().top - 16 + scrollY;
   const stacked = w < 720 || w / avail < 1.2;

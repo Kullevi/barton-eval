@@ -318,6 +318,15 @@ class RepoTest(unittest.TestCase):
         d = call("report", "--repo", str(self.repo), "--no-open")
         self.assertEqual((d["tasks"], d["left_out"]), (1, ["b"]))  # m2 has not run b yet
 
+    def test_a_setting_with_few_results_is_left_off_rather_than_shrinking_the_rest(self):
+        self._results([(t, m, "solved", 1) for t in "abcd" for m in ("m1", "m2")]
+                      + [("a", "m3", "failed", 1)])  # m3 was stopped after one task
+        d = call("report", "--repo", str(self.repo), "--no-open")
+        self.assertEqual((d["tasks"], [p["setting"] for p in d["partial"]]),
+                         (4, ["m3|claude|default"]))
+        page = Path(d["report"]).read_text(encoding="utf-8")
+        self.assertNotIn('"model": "m3"', page)
+
     def test_an_excluded_task_is_left_off_the_cards_with_its_reason(self):
         self._results([("a", "m1", "solved", 1), ("a", "m2", "failed", 1),
                        ("b", "m1", "failed", 1), ("b", "m2", "failed", 1)])

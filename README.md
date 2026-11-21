@@ -52,8 +52,9 @@ on exactly the same tasks.
   and sharp, light or dark, ready to paste into a post, with your name on them if you like. **Hide names**
   shows "My project" instead of the project name and leaves out task
   descriptions, for a card or screenshot you share.
-  Each card prints the number of tasks, how they were judged and by whom, and
-  says so plainly when the models were too close to call or the tasks too easy.
+  Each card prints the number of tasks, how many of them told the models apart,
+  how they were judged and by whom, and says so plainly when the models were
+  too close to call or the tasks too easy.
 - **History.** Results stay in your project (`.barton/`, never committed), so a
   model you test next month is compared on exactly the same tasks.
 

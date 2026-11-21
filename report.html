@@ -356,7 +356,8 @@ function panelsOf() {
 
 const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison")
   : p.easy ? "too easy to tell apart"
-  : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")} · ${p.runs === 1 ? "1 run each" : p.runs + " runs each"}`;
+  : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")} · ${p.runs === 1 ? "1 run each" : p.runs + " runs each"}`
+    + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "");
 const titleOf = p => p.key === "write-quality" ? "Better solution when both passed"
   : p.key === "write-score" ? "Coding tasks solved" : "Planted bugs found in review";
 
@@ -377,16 +378,15 @@ function splitOf(taskId) {
   return rates[0] === 1 ? "all" : rates[0] === 0 ? "none" : null;
 }
 
-function apartStat(kind) {
-  const split = (DATA.tasks || []).filter(t => t.kind === kind).map(t => splitOf(t.id)).filter(Boolean);
-  return { label: "Told apart", value: `${split.filter(x => x === "some").length} of ${split.length}` };
+// How many coding tasks told the settings apart, for the panel's note.
+function apartCount() {
+  return (DATA.tasks || []).filter(t => t.kind === "write" && splitOf(t.id) === "some").length;
 }
 
 // The numbers behind the result, shown once in the footer.
 function footerStats(P) {
   const st = [];
   if (P.write) st.push({ label: "Coding tasks", value: String(P.write.n) });
-  if (P.write && settings("write").length > 1) st.push(apartStat("write"));
   if (P.review) st.push({ label: "Reviews", value: String(P.review.n) });
   const runs = Math.max(...[P.write, P.review].filter(Boolean).map(p => p.runs));
   st.push({ label: "Runs each", value: String(runs) });

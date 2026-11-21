@@ -28,7 +28,12 @@ quick to run, and honest about being small.
 - **Validation before use**: a check must fail before the change and pass
   twice with it (catches broken and flaky checks). Prompts must name any exact
   interface the tests rely on, after SWE-bench Verified found that many mined
-  tasks were underspecified.
+  tasks were underspecified. A fresh judge compares each prompt with what its
+  hidden tests assert before any model runs it, and again for any task every
+  model failed; a task whose tests want what the prompt leaves open is left
+  off the cards with the reason shown (`exclude`), never deleted. In our own
+  run on a large private codebase, two of four tasks that every model failed
+  were faulty in exactly this way.
 - **Without tests**: the test leader writes a check from the original change
   (validated the same way), or, when the code cannot run, a blind judge
   decides. The method is recorded per result and printed on the card.
@@ -54,7 +59,13 @@ easy". Three changes address it:
 - **Quality when both passed.** A blind A/B judgment of solutions that both
   pass, in both orders; a win counts only when both orders agree (the standard
   defence against position bias in pairwise LLM judging, as in MT-Bench and
-  Chatbot Arena practice). This is the one place Barton compares models with
+  Chatbot Arena practice). The two orders may go to judges from different
+  vendors; with more judges, every answer must name the same solution.
+  `status` shows how often each judge picked the first or second answer, and a
+  judge that mostly picks one position can be removed (`forget-judge`).
+- **Which tasks told them apart.** The coding card notes how many tasks some
+  settings solved and others did not; tasks every setting solved, or none did,
+  cannot show a difference. This is the one place Barton compares models with
   each other, so it is shown on its own card and never changes the solved
   counts, which stay absolute.
 - **Ceiling warning.** When every setting solves at least 90 % of the tasks,
@@ -75,13 +86,21 @@ easy". Three changes address it:
 - **Unattended but contained.** Claude runs with `--permission-mode dontAsk`
   and a fixed tool list; Codex with its `workspace-write` sandbox (on Windows
   `windows.sandbox="unelevated"`, without which every command is refused).
+  Where Linux does not let that sandbox start, Codex can run without it
+  (`config --codex-sandbox off`): the model still works in a throwaway copy.
+- **Stopping cleans up.** Model CLIs and checks run in sessions of their own,
+  which a Ctrl-C of Barton does not reach. On a stop Barton starts nothing more,
+  stops everything it started (on Windows also through a job object that ends
+  with Barton), removes its task folders and records nothing, so the cut-short
+  runs simply run again next time.
 - **No windows on Windows.** A run starts hundreds of git, shell, CLI and test
   processes. Every one goes through `sp_run`, which on Windows gives it a
   hidden console (`CREATE_NO_WINDOW`) that its own children share, so no
   terminal window flashes up while the user works. Keep it that way: never
   call `subprocess` directly.
 - **Errors are not scores.** A run that could not happen (login, model name,
-  sandbox, timeout) is recorded as `error`, left out of every chart, and rerun.
+  limits, sandbox) is recorded as `error`, left out of every chart, and rerun.
+  Running out of time is the model's own result: the task counts as not solved.
 
 ## Comparable over time
 

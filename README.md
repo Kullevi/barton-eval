@@ -322,6 +322,11 @@ same request.
 
 ---
 
+**Finding the results again.** Ask your assistant to show the Barton results;
+it rebuilds the page from the latest runs and opens it. The page itself is
+`.barton/report.html` in the project you tested. There is no desktop shortcut,
+because a shortcut would open the results as they were when it was made.
+
 ## Commands
 
 Run from the root of the project under test, or pass `--repo PATH`. Every

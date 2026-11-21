@@ -281,6 +281,10 @@ it; only the middle kind can show a difference), and that:
 
 - they can type their name or handle on the page, then press **Copy image**
   to paste a card straight into a post;
+- where the page is (the `report` path `barton report` printed, inside the
+  project's `.barton` folder), and that asking you to "show the Barton results"
+  rebuilds it with the latest runs; a saved copy or shortcut would show old
+  results, so do not make one;
 - small samples are shown as they are: when the card says "too close to call",
   the models did about equally well on these tasks;
 - the costs on the cards are what the run would cost at API prices. On a

@@ -584,22 +584,33 @@ def copy_folder(cfg: dict, src: Path, dest: Path) -> None:
 def stop_inside(folder: Path) -> None:
     """Stop every process still working in a task folder. Codex starts each command in a
     session of its own, so stopping the CLI's process group leaves a type check or test
-    run going; those are found by where they run (Linux /proc)."""
-    proc = Path("/proc")
-    if not proc.is_dir():
-        return
+    run going; those are found by where they run (Linux /proc, macOS lsof)."""
+    if os.name == "nt":
+        return  # Windows: the job object ends them with Barton, taskkill /T before that
     import signal
     inside = str(folder.resolve()) + os.sep
-    for d in proc.iterdir():
-        if not d.name.isdigit() or int(d.name) == os.getpid():
-            continue
-        try:
-            where = [os.readlink(d / "cwd") + os.sep, os.readlink(d / "exe")]
-        except OSError:
-            continue
-        if any(w.startswith(inside) for w in where):
+    found: list[tuple[int, list[str]]] = []
+    proc = Path("/proc")
+    if proc.is_dir():
+        for d in proc.iterdir():
+            if d.name.isdigit():
+                try:
+                    found.append((int(d.name), [os.readlink(d / "cwd") + os.sep, os.readlink(d / "exe")]))
+                except OSError:
+                    pass
+    elif which("lsof"):
+        # Every process's working folder: lines "p<pid>" then "n<path>".
+        p = sp_run(["lsof", "-a", "-d", "cwd", "-F", "pn"], capture_output=True, text=True)
+        pid = None
+        for line in p.stdout.splitlines():
+            if line.startswith("p"):
+                pid = int(line[1:])
+            elif line.startswith("n") and pid is not None:
+                found.append((pid, [os.path.realpath(line[1:]) + os.sep]))
+    for pid, where in found:
+        if pid != os.getpid() and any(w.startswith(inside) for w in where):
             try:
-                os.kill(int(d.name), signal.SIGKILL)
+                os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
 

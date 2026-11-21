@@ -235,7 +235,7 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(last["outcome"], "error", last)
         self.assertIn("codex-sandbox off", last["error"])
 
-    @unittest.skipUnless(Path("/proc/self/cwd").exists(), "finds processes through /proc")
+    @unittest.skipIf(os.name == "nt", "Windows ends them through the job object")
     def test_removing_a_task_folder_stops_what_still_runs_in_it(self):
         # Codex runs each command in a session of its own, outside the CLI's process group.
         folder = Path(self.tmp.name) / "w" / "task"

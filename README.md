@@ -345,6 +345,7 @@ command prints JSON. Your assistant runs these; you never need to.
 | `run ID... \| all \| quick --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
 | `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
 | `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
+| `forget-judge MODEL` | Remove one judge's pairwise answers, so another judge can take its place. |
 | `status` | Progress and scores so far, and how often each judge picked the first or second solution. |
 | `report [--no-open] [--quick]` | Build the results page and open it in the browser. Models are compared only on tasks every one of them has run; `--quick` shows the quick set and says so on the cards. |
 | `clean` | Remove task folders left by runs that were killed. |

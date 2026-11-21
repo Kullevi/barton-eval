@@ -115,30 +115,39 @@ class RepoTest(unittest.TestCase):
 
     def test_stopping_barton_stops_what_its_runs_started(self):
         # Ctrl-C or a kill must not leave a model CLI or a check running on its own.
-        spec = Path(self.tmp.name) / "t.json"
-        spec.write_text(json.dumps({"id": "t", "kind": "write", "base": self.fix + "^",
-                                    "reference": self.fix, "prompt": "Add clamp."}))
-        call("task-add", "--repo", str(self.repo), str(spec))
+        for tid in ("t", "u"):
+            spec = Path(self.tmp.name) / f"{tid}.json"
+            spec.write_text(json.dumps({"id": tid, "kind": "write", "base": self.fix + "^",
+                                        "reference": self.fix, "prompt": "Add clamp."}))
+            call("task-add", "--repo", str(self.repo), str(spec))
         mark = Path(self.tmp.name) / "child-still-ran.txt"
+        started = Path(self.tmp.name) / "started"
+        started.mkdir()
         child = Path(self.tmp.name) / "child.py"
         child.write_text(f"import time, pathlib\ntime.sleep(4)\npathlib.Path({str(mark)!r}).write_text('x')\n")
         fake = Path(self.tmp.name) / "fake.py"
         fake.write_text(
-            "import subprocess, sys, time\n"
+            "import os, pathlib, subprocess, sys, time\n"
+            f"pathlib.Path({str(started)!r}, os.path.basename(os.getcwd())).write_text('x')\n"
             "kw = {'start_new_session': True} if sys.platform != 'win32' else {}\n"
             f"subprocess.Popen([sys.executable, {str(child)!r}], **kw)\n"
             "time.sleep(60)\n")
         import signal
         import threading
         threading.Timer(2, signal.raise_signal, [signal.SIGINT]).start()
-        with unittest.mock.patch.object(barton, "harness_cmd", return_value=[sys.executable, str(fake)]), \
-                unittest.mock.patch.object(barton.os, "_exit", side_effect=SystemExit(130)), \
-                contextlib.redirect_stdout(io.StringIO()) as buf, self.assertRaises(SystemExit):
-            barton.main(["run", "--repo", str(self.repo), "t", "--harness", "claude", "--model", "m"])
-        self.assertIn("Barton was stopped", buf.getvalue())
-        self.assertEqual(list(barton.WORK_ROOT.glob("t-*")), [])  # its task folder is gone
-        time.sleep(4)
-        self.assertFalse(mark.exists())  # what the model started was stopped too
+        try:
+            with unittest.mock.patch.object(barton, "harness_cmd", return_value=[sys.executable, str(fake)]), \
+                    unittest.mock.patch.object(barton.os, "_exit", side_effect=SystemExit(130)), \
+                    contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+                barton.main(["run", "--repo", str(self.repo), "all", "--harness", "claude",
+                             "--model", "m", "--jobs", "1"])
+            self.assertEqual(barton.Barton(self.repo).results(), [])  # nothing cut short is recorded
+            self.assertEqual(len(list(started.iterdir())), 1)  # the queued task never started
+            self.assertEqual(list(barton.WORK_ROOT.glob("[tu]-*")), [])  # no task folder is left
+            time.sleep(4)
+            self.assertFalse(mark.exists())  # what the model started was stopped too
+        finally:
+            barton.STOPPING.clear()
 
     def test_run_all_runs_tasks_at_once_and_cleans_up(self):
         for i in range(3):
@@ -307,6 +316,11 @@ class RepoTest(unittest.TestCase):
         page = Path(d["report"]).read_text(encoding="utf-8")
         self.assertIn(why, page)
         self.assertNotIn("b", call("quick", "--repo", str(self.repo), "--reviews", "0")["quick"])
+        cfg = barton.Barton(self.repo).config()
+        cfg["quick"] = ["a", "b"]
+        barton.Barton(self.repo).save_config(cfg)
+        call("exclude", "--repo", str(self.repo), "b", "--reason", why)
+        self.assertEqual(barton.Barton(self.repo).config()["quick"], ["a"])  # nor run with the quick set
         call("exclude", "--repo", str(self.repo), "b", "--undo")
         self.assertEqual(call("report", "--repo", str(self.repo), "--no-open")["tasks"], 2)
 
@@ -395,6 +409,14 @@ class QualityTest(unittest.TestCase):
         with (self.b.dir / "prefs.jsonl").open("a") as f:
             f.write(json.dumps({"task": "t1", "first": first, "second": second,
                                 "choice": choice, "judge_model": judge}) + "\n")
+
+    def test_forgetting_a_weak_judge_lets_the_other_decide(self):
+        self.prefer("x", "y", "first", "weak"); self.prefer("y", "x", "first", "weak")
+        self.prefer("x", "y", "first", "strong"); self.prefer("y", "x", "second", "strong")
+        self.assertIsNone(barton.quality(self.b)[0]["winner"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            barton.main(["forget-judge", "--repo", str(self.b.repo), "weak"])
+        self.assertEqual(barton.quality(self.b)[0]["winner"], "m1|codex|low")
 
     def test_judges_that_disagree_make_a_tie_and_agreeing_judges_a_win(self):
         self.prefer("x", "y", "first", "j1"); self.prefer("y", "x", "second", "j1")

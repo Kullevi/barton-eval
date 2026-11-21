@@ -245,7 +245,7 @@ A win counts only when both orders agree; otherwise it is a tie, which cancels
 the judge's habit of favouring the first or the second answer.
 
 **A task no setting solved.** Before showing the result, run
-`barton fairness <id>` for every coding task that every setting failed; the
+`barton fairness <id>` for every coding task with a check that every setting failed; the
 bundle now also holds how the solutions failed. Give it to a fresh judge. If the
 tests require something the prompt leaves open or contradicts, the task is
 faulty: it is frozen once run, so take it off the cards with
@@ -257,7 +257,9 @@ you excluded and why.
 **Judges.** `barton status` shows how often each pairwise judge picked the first
 or the second solution. A judge that picks one position most of the time (its
 `note` says so) turns most answers into ties; say so when you show the quality
-card, and prefer a stronger judge next time.
+card. A win needs every judge to agree, so a weak judge's answers keep a
+stronger judge's wins at ties: remove them with `barton forget-judge <model>`,
+then run `barton pairs` again and judge with the stronger one.
 
 **Too easy?** If the best setting solved 90 % or more of the coding tasks, or
 every model found every planted bug, the run cannot tell the models apart. Before

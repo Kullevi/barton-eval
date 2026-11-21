@@ -50,16 +50,23 @@ CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb",
 
 # ---------------------------------------------------------------- helpers
 
-def contain_crashes() -> bool:
+_JOB = False
+
+
+def contain_crashes(kill_on_exit: bool = False) -> bool:
     """On Windows, make every program Barton starts, and every program those start,
     crash with an error code instead of opening an error box nobody is there to close.
 
     The error mode alone is not enough: it is inherited, but PowerShell resets it for
     the programs it starts, so a test the agent runs from PowerShell could still open
     a box and hang until someone clicks it. A job object with "die on unhandled
-    exception" holds for every process in it, and children join their parent's job."""
-    if os.name != "nt":
-        return False
+    exception" holds for every process in it, and children join their parent's job.
+    With `kill_on_exit`, every process still in the job stops when Barton exits, also a
+    model's child whose own parent has already gone and which taskkill cannot find."""
+    global _JOB
+    if os.name != "nt" or _JOB:
+        return False  # once per process: one job, set by the first command
+    _JOB = True
     import ctypes
     from ctypes import wintypes
     k = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -86,7 +93,7 @@ def contain_crashes() -> bool:
         return False
     info = Extended()
     # Die on unhandled exception; a program that must leave the job (an installer) still may.
-    info.Basic.LimitFlags = 0x400 | 0x800
+    info.Basic.LimitFlags = 0x400 | 0x800 | (0x2000 if kill_on_exit else 0)
     ok = (k.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
           and k.AssignProcessToJobObject(job, k.GetCurrentProcess()))
     return bool(ok)  # the handle stays open for the life of this process
@@ -150,8 +157,11 @@ def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
         kw["start_new_session"] = True  # its own process group, so the group can be stopped
-    p = subprocess.Popen(cmd, **kw)
-    LIVE.add(p)
+    with _launch_lock:
+        if STOPPING.is_set():
+            raise Stopped()
+        p = subprocess.Popen(cmd, **kw)
+        LIVE.add(p)
     try:
         so, se = p.communicate(stdin_text.encode("utf-8") if stdin_text is not None else None,
                                timeout=timeout)
@@ -166,24 +176,39 @@ def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
             se.decode("utf-8", "replace"), time.time() - t0, to)
 
 
-# What a run has going, so that stopping Barton stops it too: model CLIs and checks
+# What Barton has going, so that stopping Barton stops it too: model CLIs and checks
 # run in sessions of their own, which Ctrl-C or a kill of Barton does not reach.
 LIVE: set = set()
 FOLDERS: set = set()
+STOPPING = threading.Event()
+_launch_lock = threading.Lock()
+
+
+class Stopped(Exception):
+    """Barton is being stopped: start nothing more."""
 
 
 def stop_everything(signum=None, frame=None) -> None:
-    """Stop every model CLI and check this run started, remove its task folders, exit.
+    """Stop every model CLI and check Barton started, remove its task folders, exit.
 
-    Nothing is recorded: a run cut short is not a result, and runs again next time."""
-    for p in list(LIVE):
-        stop_tree(p)
-    for f in list(FOLDERS):
-        remove_tree(f)
-    out({"stopped": "Barton was stopped; the runs in progress were not recorded and run "
-                    "again next time."})
-    sys.stdout.flush()
-    os._exit(130)
+    Nothing is recorded once this begins: a run cut short is not a result, and runs
+    again next time. Worker threads keep going while this runs, so the flag, set
+    under the same lock that starts processes, stops them starting or recording."""
+    try:
+        with _launch_lock:
+            STOPPING.set()
+        for p in list(LIVE):
+            stop_tree(p)
+        for f in list(FOLDERS):
+            try:
+                remove_tree(f)
+            except OSError:
+                pass  # a file still held open; `barton clean` removes it later
+        # Straight to the file descriptor: the interrupted thread may hold the print lock.
+        os.write(1, (json.dumps({"stopped": "Barton was stopped; what was in progress was "
+                                 "not recorded and runs again next time."}) + "\n").encode())
+    finally:
+        os._exit(130)
 
 
 def stop_tree(p: subprocess.Popen) -> None:
@@ -269,6 +294,8 @@ class Barton:
         return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
 
     def append_result(self, row: dict) -> None:
+        if STOPPING.is_set():
+            return  # cut short by a stop: not a result
         self.init()
         # Runs finish at the same time, in this process and in others started for
         # other models, so each line is written whole under a lock.
@@ -699,6 +726,8 @@ def cmd_exclude(args) -> None:
                 t.pop("excluded", None)
             else:
                 t["excluded"] = args.reason or fail("Give the reason with --reason.")
+    if not args.undo and args.task in cfg.get("quick", []):
+        cfg["quick"] = [i for i in cfg["quick"] if i != args.task]
     b.save_config(cfg)
     out({"task": args.task, "excluded": None if args.undo else args.reason})
 
@@ -713,6 +742,9 @@ def cmd_fairness(args) -> None:
         fail("A fairness check is for coding tasks with a check.")
     files = task["check"].get("files", [])
     tests = git(b.repo, "diff", task["base"], task["reference"], "--", *files) if files else ""
+    if files and not tests.strip():  # the check uses tests the change left as they were
+        tests = "\n".join(f"### {rel}\n" + (c.decode("utf-8", "replace") if c else "(missing)")
+                          for rel, c in hidden_files(b, task).items())
     written = "\n".join(f"## {rel}\n\n```\n{text}\n```" for rel, text in task["check"].get("write", {}).items())
     parts = [f"# Task given to the model\n\n{task['prompt']}\n",
              "Below are the hidden tests that decide whether a solution passes, and how "
@@ -721,6 +753,7 @@ def cmd_fairness(args) -> None:
              "the task leaves open (an exact name, code, message, value or format with more than "
              "one reasonable reading) or contradicts? Answer `fair` or `unfair`, and in one "
              "sentence name what the tests require that the task does not say.\n",
+             f"# Check command\n\n`{task['check']['command']}`\n",
              f"# Hidden tests (what the original change added)\n\n```diff\n{clipped(tests)}\n```\n"
              + (f"\n{written}\n" if written else "")]
     fails = [r for r in current_rows(b) if r["task"] == task["id"] and r["outcome"] == "failed"]
@@ -1038,23 +1071,13 @@ def estimate_cost(model: str, u: dict, day: str | None = None) -> float | None:
 
 def cmd_run(args) -> None:
     """Run one model on the given tasks (or `all`), several at once, and record each."""
-    import signal
-    sigs = [getattr(signal, n) for n in ("SIGINT", "SIGTERM", "SIGBREAK") if hasattr(signal, n)]
-    before = {sig: signal.signal(sig, stop_everything) for sig in sigs}
-    try:
-        run_tasks(args)
-    finally:
-        for sig, handler in before.items():
-            signal.signal(sig, handler)
-
-
-def run_tasks(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     if args.tasks == ["all"]:
         ids = [t["id"] for t in cfg.get("tasks", []) if not t.get("excluded")]
     elif args.tasks == ["quick"]:
         ids = cfg.get("quick") or fail("No quick set yet. Run `barton quick` first.")
+        ids = [i for i in ids if not b.task(i).get("excluded")]
     else:
         ids = args.tasks
     tasks = [b.task(i) for i in dict.fromkeys(ids)]
@@ -1105,13 +1128,14 @@ def run_one(b: Barton, task: dict, args) -> dict:
     # The folder name shows up in the model's output, so it must not name the model.
     folder_name = f"{task['id']}-{os.urandom(4).hex()}"
     if task["kind"] == "review":
+        FOLDERS.add(WORK_ROOT / folder_name)
         folder = make_folder(b, task["base"], folder_name, review_files(b, task),
                              "change under review")
         prompt = task["prompt"] + REVIEW_RULES
     else:
+        FOLDERS.add(WORK_ROOT / folder_name)
         folder = make_folder(b, task["base"], folder_name)
         prompt = task["prompt"] + WRITE_RULES
-    FOLDERS.add(folder)
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
         cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt,
@@ -1404,10 +1428,25 @@ def judge_order(b: Barton) -> dict:
     for c in seen.values():
         picked = c["first"] + c["second"]
         c["second_share"] = round(c["second"] / picked, 2) if picked else None
-        c["note"] = ("Picks one position most of the time, so most of its answers cancel "
-                     "to ties; prefer a stronger judge." if picked >= 10
+        c["note"] = ("Picks one position most of the time, so many of its answers are "
+                     "position, not quality; prefer a stronger judge, and `barton forget-judge` "
+                     "its answers." if picked >= 10
                      and abs(c["second_share"] - .5) > .2 else "")
     return seen
+
+
+def cmd_forget_judge(args) -> None:
+    """Remove one judge's pairwise answers. Every judge must agree for a win, so a weak
+    judge's answers would otherwise turn a stronger judge's wins into ties for good."""
+    b = Barton(Path(args.repo))
+    path = b.dir / "prefs.jsonl"
+    if not path.exists():
+        fail("No pairwise answers yet.")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    keep = [l for l in lines if l.strip() and json.loads(l).get("judge_model") != args.judge]
+    path.write_text("".join(l + "\n" for l in keep), encoding="utf-8")
+    out({"judge": args.judge, "removed": len(lines) - len(keep),
+         "note": "Run `barton pairs <task>` again to judge those comparisons with another judge."})
 
 
 def quality(b: Barton) -> list[dict]:
@@ -1506,7 +1545,7 @@ def cmd_report(args) -> None:
                       | {"check": bool(t.get("check"))} for t in tasks],
             "results": [r for r in rows if r["task"] in shared],
             "quality": [q for q in quality(b) if q.get("task") in shared],
-            "quality_judges": sorted({p["judge_model"] for p in b.prefs()})}
+            "quality_judges": sorted({p["judge_model"] for p in b.prefs() if p["task"] in shared})}
     tpl = (HERE / "report.html").read_text(encoding="utf-8")
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     page = tpl.replace("/*BARTON_DATA*/null", blob)
@@ -1575,7 +1614,6 @@ def cmd_clean(args) -> None:
 # ---------------------------------------------------------------- main
 
 def main(argv: list[str] | None = None) -> None:
-    contain_crashes()
     # Windows pipes default to the ANSI code page; commit messages are often not ANSI.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -1651,6 +1689,8 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--note", default="")
     sp = p("pairs", cmd_pairs, "blind A/B bundles of solved solutions to one task")
     sp.add_argument("task")
+    sp = p("forget-judge", cmd_forget_judge, "remove one judge's pairwise answers")
+    sp.add_argument("judge")
     sp = p("prefer", cmd_prefer, "record which solution in a pair is better")
     sp.add_argument("pair")
     sp.add_argument("choice", choices=["first", "second", "tie"])
@@ -1662,7 +1702,18 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--quick", action="store_true", help="only the quick set, and say so on the cards")
     p("clean", cmd_clean, "remove leftover task folders")
     args = ap.parse_args(argv)
-    args.fn(args)
+    # The results page opens a browser, which must outlive Barton.
+    contain_crashes(kill_on_exit=args.cmd != "report")
+    import signal
+    sigs = [getattr(signal, n) for n in ("SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK") if hasattr(signal, n)]
+    before = {}
+    if threading.current_thread() is threading.main_thread():
+        before = {sig: signal.signal(sig, stop_everything) for sig in sigs}
+    try:
+        args.fn(args)
+    finally:
+        for sig, handler in before.items():
+            signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

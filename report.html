@@ -362,11 +362,19 @@ const titleOf = p => p.key === "write-quality" ? "Better solution when both pass
 
 // Which tasks told the settings apart: every one made it, some did, or none did.
 // Only the "some" tasks can show a difference; the others are too easy or too hard here.
+// Per setting, the share of its attempts that made it; a task tells settings apart
+// only when those shares differ, not when one setting's attempts disagree.
 function splitOf(taskId) {
-  const ok = (DATA.results || []).filter(r => r.task === taskId && !["error", "pending"].includes(r.outcome))
-    .map(r => ["solved", "found"].includes(r.outcome));
-  if (!ok.length) return null;
-  return ok.every(Boolean) ? "all" : ok.some(Boolean) ? "some" : "none";
+  const by = new Map();
+  for (const r of DATA.results || []) {
+    if (r.task !== taskId || ["error", "pending"].includes(r.outcome)) continue;
+    const k = `${r.model}|${r.harness}|${r.effort || ""}`, s = by.get(k) || [0, 0];
+    s[0] += ["solved", "found"].includes(r.outcome) ? 1 : 0; s[1] += 1; by.set(k, s);
+  }
+  const rates = [...by.values()].map(([h, n]) => h / n);
+  if (rates.length < 2) return null;
+  if (new Set(rates).size > 1) return "some";
+  return rates[0] === 1 ? "all" : rates[0] === 0 ? "none" : null;
 }
 
 function apartStat(kind) {
@@ -564,7 +572,7 @@ function renderTable() {
     const tr = document.createElement("tr"), td = document.createElement("td");
     td.textContent = e.id; td.colSpan = cols.length + 1;
     const meta = document.createElement("small");
-    meta.textContent = `left off as a faulty task: ${e.reason}`;
+    meta.textContent = hidden() ? "left off as a faulty task" : `left off as a faulty task: ${e.reason}`;
     td.appendChild(meta); tr.appendChild(td); t.appendChild(tr);
   }
 }

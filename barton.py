@@ -195,8 +195,12 @@ def stop_everything(signum=None, frame=None) -> None:
     again next time. Worker threads keep going while this runs, so the flag, set
     under the same lock that starts processes, stops them starting or recording."""
     try:
-        with _launch_lock:
-            STOPPING.set()
+        STOPPING.set()
+        # Wait for a process being started in a worker to be registered, but never for
+        # long: this handler runs in the main thread, which may hold the lock itself
+        # (validate and plant run their checks there).
+        if _launch_lock.acquire(timeout=2):
+            _launch_lock.release()
         for p in list(LIVE):
             stop_tree(p)
         for f in list(FOLDERS):

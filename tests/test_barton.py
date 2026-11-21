@@ -149,6 +149,18 @@ class RepoTest(unittest.TestCase):
         finally:
             barton.STOPPING.clear()
 
+    def test_a_stop_while_a_check_starts_in_the_main_thread_still_exits(self):
+        # validate and plant start checks in the main thread, where the stop handler runs too.
+        exits = []
+        try:
+            with unittest.mock.patch.object(barton.os, "_exit", side_effect=exits.append), \
+                    unittest.mock.patch.object(barton.os, "write"):
+                with barton._launch_lock:
+                    barton.stop_everything()
+            self.assertEqual(exits, [130])
+        finally:
+            barton.STOPPING.clear()
+
     def test_run_all_runs_tasks_at_once_and_cleans_up(self):
         for i in range(3):
             spec = Path(self.tmp.name) / f"t{i}.json"

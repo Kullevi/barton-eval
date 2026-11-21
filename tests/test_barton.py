@@ -430,6 +430,10 @@ class QualityTest(unittest.TestCase):
             barton.main(["forget-judge", "--repo", str(self.b.repo), "weak"])
         self.assertEqual(barton.quality(self.b)[0]["winner"], "m1|codex|low")
 
+    def test_two_judges_may_take_one_order_each(self):
+        self.prefer("x", "y", "first", "j1"); self.prefer("y", "x", "second", "j2")
+        self.assertEqual(barton.quality(self.b)[0]["winner"], "m1|codex|low")
+
     def test_judges_that_disagree_make_a_tie_and_agreeing_judges_a_win(self):
         self.prefer("x", "y", "first", "j1"); self.prefer("y", "x", "second", "j1")
         self.prefer("x", "y", "second", "j2"); self.prefer("y", "x", "first", "j2")

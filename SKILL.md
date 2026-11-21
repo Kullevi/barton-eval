@@ -112,7 +112,7 @@ Look at the repository yourself and decide how its code and tests run.
   and each run gets a copy. Prefer it to `--link`: a linked folder is the
   user's own, so a model that installs packages in a task would change it. Untracked files the code needs, such as `.env`, go in
   `barton config --copy .env` (copied into task folders only, never committed).
-- `barton config --public yes|no`: always set it, so the card is right.
+- `barton config --public yes|no`: always set it, so the results page says it.
   Check the git remote; ask only if you cannot tell. Public code may have been in a model's
   training data, and the card says so.
 
@@ -273,7 +273,7 @@ the result as it is, and offer once to write a few harder tasks yourself
 
 ## 7. Show the result
 
-Run `barton report`. It opens a page in the browser with ready-made cards:
+Run `barton report`. It opens a window of its own with ready-made cards:
 tasks solved, better solution when both passed, planted bugs found, time and
 cost per model and effort level.
 Tell the user in a few sentences what the result says about *their* code,
@@ -281,8 +281,7 @@ including where models differed and how many tasks told them apart (the table
 marks each task: every setting made it, told settings apart, or no setting made
 it; only the middle kind can show a difference), and that:
 
-- they can type their name or handle on the page, then press **Copy image**
-  to paste a card straight into a post;
+- they can press **Copy image** to paste a card straight into a post;
 - where the page is (the `report` path `barton report` printed, inside the
   project's `.barton` folder), and that asking you to "show the Barton results"
   rebuilds it with the latest runs; a saved copy or shortcut would show old

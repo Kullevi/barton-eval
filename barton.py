@@ -1533,6 +1533,39 @@ def cmd_status(args) -> None:
          "task_set": task_age(cfg, rows)})
 
 
+def app_browser() -> str | None:
+    """Edge or Chrome, which can show the results in a window of their own."""
+    candidates = {
+        "win32": [os.path.expandvars(p) for p in (
+            r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+            r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+            r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+            r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe",
+            r"%LocalAppData%\Google\Chrome\Application\chrome.exe")],
+        "darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                   "/Applications/Chromium.app/Contents/MacOS/Chromium"],
+    }.get(sys.platform)
+    if candidates is None:  # Linux and others: look on the PATH
+        candidates = [shutil.which(n) for n in ("google-chrome", "chromium", "chromium-browser",
+                                                "microsoft-edge")]
+    return next((p for p in candidates if p and os.path.exists(p)), None)
+
+
+def open_window(url: str) -> None:
+    """Opens the results in an app window of their own, like a desktop program, the
+    way Girdish and Kuakgan open theirs. Falls back to an ordinary browser tab."""
+    browser = app_browser()
+    if browser:
+        try:
+            subprocess.Popen([browser, f"--app={url}", "--window-size=1500,950"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except OSError:
+            pass
+    webbrowser.open(url)
+
+
 def cmd_report(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
@@ -1576,7 +1609,7 @@ def cmd_report(args) -> None:
     b.init()
     dest.write_text(page, encoding="utf-8")
     if not args.no_open:
-        webbrowser.open(dest.as_uri())
+        open_window(dest.as_uri())
     out({"report": str(dest), "tasks": len(tasks),
          **({"partial": data["partial"], "partial_note": "Too few results to compare yet, so "
              "left off the cards; run their remaining tasks to include them."} if partial else {}),

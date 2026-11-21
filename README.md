@@ -49,7 +49,7 @@ on exactly the same tasks.
   in it. Did the model find it?
 - **Time and cost** per model and thinking level.
 - **An image to share**, landscape (2:1 by default, following your window)
-  and sharp, light or dark, ready to paste into a post, with your name on them if you like. **Hide names**
+  and sharp, light or dark, ready to paste into a post. **Hide names**
   shows "My project" instead of the project name and leaves out task
   descriptions, for a card or screenshot you share.
   Each card prints the number of tasks, how many of them told the models apart,
@@ -96,8 +96,7 @@ planted bugs, so the card marks the reviews as too easy to tell apart.*
   changed. A task is used only if those tests fail before the change and pass
   twice with it. When a project has no tests for a change, your assistant
   writes a small check from the original change (validated the same way), or,
-  when the code cannot run at all, a blind AI judge decides. The card names
-  the method.
+  when the code cannot run at all, a blind AI judge decides.
 - **Planted bugs** are mechanical changes (a flipped comparison, an
   off-by-one, a swapped `and`/`or`) in real code, kept only when your tests
   catch them, so they are certainly bugs. The answer key is fixed, so scores do

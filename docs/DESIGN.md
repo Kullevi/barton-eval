@@ -116,8 +116,10 @@ comparison down to the few tasks it reached.
 
 ## Honest cards
 
-- Counts, not percentages: "7 / 10" shows the sample size; one block per task
-  and run makes it visible at a glance.
+- Counts, not percentages: "7 / 10" shows the sample size, beside a bar of the
+  share made.
+- Only the result: the shared image carries no settings, judges or dates, and
+  the task-by-task table stays folded under the cards.
 - "Too close to call" when the top two differ by less than two standard
   errors of the difference between two proportions, or by fewer than two
   tasks: with a handful of tasks most gaps are noise, with fifty they are not.

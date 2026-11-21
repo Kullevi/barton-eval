@@ -363,11 +363,20 @@ class QualityTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def prefer(self, first, second, choice):
+    def prefer(self, first, second, choice, judge="j"):
         self.b.init()
         with (self.b.dir / "prefs.jsonl").open("a") as f:
             f.write(json.dumps({"task": "t1", "first": first, "second": second,
-                                "choice": choice, "judge_model": "j"}) + "\n")
+                                "choice": choice, "judge_model": judge}) + "\n")
+
+    def test_judges_that_disagree_make_a_tie_and_agreeing_judges_a_win(self):
+        self.prefer("x", "y", "first", "j1"); self.prefer("y", "x", "second", "j1")
+        self.prefer("x", "y", "second", "j2"); self.prefer("y", "x", "first", "j2")
+        self.assertIsNone(barton.quality(self.b)[0]["winner"])  # one judge must not overwrite the other
+        (self.b.dir / "prefs.jsonl").unlink()
+        self.prefer("x", "y", "first", "j1"); self.prefer("y", "x", "second", "j1")
+        self.prefer("x", "y", "first", "j2"); self.prefer("y", "x", "second", "j2")
+        self.assertEqual(barton.quality(self.b)[0]["winner"], "m1|codex|low")
 
     def test_win_needs_both_orders_to_agree(self):
         self.prefer("x", "y", "first")

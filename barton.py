@@ -1371,7 +1371,10 @@ def judge_order(b: Barton) -> dict:
 
 
 def quality(b: Barton) -> list[dict]:
-    """Wins, ties and losses per setting from preferences that agree in both orders."""
+    """Wins, ties and losses per setting from preferences that agree in both orders.
+
+    With several judges, a pair is a win only when every judge that answered both
+    orders named the same winner; otherwise it is a tie."""
     rows = {r["run"]: r for r in current_rows(b)}
     votes: dict[tuple, dict] = {}
     for p in b.prefs():
@@ -1379,13 +1382,14 @@ def quality(b: Barton) -> list[dict]:
             continue
         key = tuple(sorted((p["first"], p["second"])))
         winner = {"first": p["first"], "second": p["second"]}.get(p["choice"])
-        votes.setdefault(key, {})[(p["first"], p["second"])] = winner
+        votes.setdefault(key, {}).setdefault(p["judge_model"], {})[(p["first"], p["second"])] = winner
     out_rows = []
-    for (x, y), v in votes.items():
-        if len(v) < 2:
+    for (x, y), by_judge in votes.items():
+        verdicts = [a if a == c else None for a, c in
+                    (tuple(v.values()) for v in by_judge.values() if len(v) == 2)]
+        if not verdicts:
             continue  # one order only: not yet a result
-        a, c = v.values()
-        winner = a if a == c else None
+        winner = verdicts[0] if len(set(verdicts)) == 1 else None
         out_rows.append({"task": rows[x]["task"], "a": setting(rows[x]), "b": setting(rows[y]),
                          "winner": setting(rows[winner]) if winner else None})
     return out_rows

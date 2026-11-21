@@ -1,19 +1,20 @@
 <!doctype html>
 <!-- Barton-eval results page: `barton report` fills in the data below and opens
-     this file. No server and no libraries. The result is drawn as one landscape
-     dashboard on a canvas that fills the window and lays itself out for its
-     size, 2:1 by default; Copy image and Save PNG draw the same dashboard at
-     the window's size and at least twice its resolution. Visual system shared with Kuakgan (its dashboard.html
-     :root): tokens, type scale 12/14/16/20/28/48, 8 px grid, series palette. -->
+     this file. No server and no libraries. The page itself is plain HTML, so its
+     text can be selected and its link followed; Copy image and Save PNG draw the
+     same results as a 1200 x 600 card on a canvas at twice that resolution. In an
+     app window (?app=1) the page sets the window's height to fit its content.
+     Visual system shared with Kuakgan (its dashboard.html :root): tokens, type
+     scale 12/14/16/20/28/48, 8 px grid, series palette. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Barton results</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cstyle%3Eg %7B color: #0f9d6b %7D %40media (prefers-color-scheme: dark) %7B g %7B color: #2fd08b %7D %7D%3C/style%3E%3Cg fill='currentColor'%3E%3Cpath d='M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z' transform='translate(50 59) scale(.62) translate(-50 -52)'/%3E%3Cpath d='M37,89 H11 V45 L50,9 L89,45 V89 H63' fill='none' stroke='currentColor' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
 <style>
 :root {
-  --edge:48px;
+  --edge:32px;
   --bg:#f6f7f9; --surface:#ffffff; --border:#e6e8ec; --track:#eef0f3; --text:#111418; --muted:#5d6673;
   --faint:#8b929d; --accent:#0f9d6b; --warn:#c27a12; --err:#d0453b;
   --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
@@ -31,9 +32,41 @@ html, body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 va
 .seg button[aria-pressed="true"] { background:var(--surface); color:var(--text); }
 .act { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; }
 .act.primary { background:var(--text); color:var(--surface); border-color:var(--text); }
-#wrap { padding:8px 16px 0; }
-#dash { display:block; width:100%; }
-.below { padding:24px var(--edge) 48px; }
+a { color:inherit; }
+a:hover { text-decoration:underline; }
+.head { padding:24px var(--edge) 0; }
+.head h1 { font-size:40px; line-height:1.15; font-weight:650; letter-spacing:-.02em; margin:0 0 8px; }
+.head p { font-size:16px; color:var(--muted); margin:0; max-width:880px; }
+.grid { display:grid; grid-template-columns:3fr 2fr; gap:24px; padding:24px var(--edge) 0; }
+.grid.one { grid-template-columns:1fr; }
+.side { display:flex; flex-direction:column; gap:24px; }
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; display:flex; flex-direction:column; }
+.side .panel { flex:1; }
+.ptitle { display:flex; justify-content:space-between; gap:16px; margin-bottom:16px; font-size:12px; color:var(--muted); }
+.ptitle b { font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+.rows { flex:1; display:flex; flex-direction:column; justify-content:center; }
+.row { display:grid; grid-template-columns:30% 1fr auto; gap:16px; align-items:center; padding:10px 0; }
+.side .row { grid-template-columns:36% 1fr 24%; padding:5px 0; }
+.who { min-width:0; }
+.who .name { font-size:16px; font-weight:650; }
+.side .who .name { font-size:14px; }
+.who .tag, .who .detail { color:var(--muted); }
+.who .detail { display:block; padding-left:16px; }
+.track { display:flex; height:14px; border-radius:7px; background:var(--track); overflow:hidden; }
+.side .track { height:10px; border-radius:5px; }
+.val { text-align:right; font-size:20px; font-weight:650; white-space:nowrap; }
+.side .val { font-size:14px; }
+.val small { display:block; font-size:12px; font-weight:400; color:var(--muted); }
+.credit { margin:24px var(--edge) 0; padding:16px 0 24px; border-top:1px solid var(--border); text-align:right; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.credit a { text-decoration:none; text-transform:none; letter-spacing:0; font-size:14px; font-weight:400; }
+@media (max-width:720px) {
+  :root { --edge:16px; }
+  .grid { grid-template-columns:1fr; }
+  .head h1 { font-size:28px; }
+  .row, .side .row { grid-template-columns:40% 1fr 26%; gap:12px; }
+  .credit { text-align:left; }
+}
+.below { padding:0 var(--edge) 32px; }
 .meta { color:var(--muted); margin:0 0 24px; }
 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:1px; }
 td b { font-weight:650; }
@@ -60,7 +93,9 @@ td small { display:block; color:var(--muted); }
   <button class="act primary" id="copy">Copy image</button>
   <button class="act" id="save">Save PNG</button>
 </div>
-<div id="wrap"><canvas id="dash" role="img"></canvas></div>
+<header class="head"><h1 id="headline"></h1><p id="sub"></p></header>
+<main class="grid" id="grid"></main>
+<footer class="credit">Run with Barton-eval · by Kullevi · <a href="https://github.com/Kullevi/barton-eval" target="_blank" rel="noopener">github.com/Kullevi/barton-eval</a></footer>
 <details class="below">
   <summary>Task by task</summary>
   <p class="meta" id="left"></p>
@@ -157,29 +192,10 @@ function scoreSpec(kind, color) {
   const n = Math.max(...list.map(s => s.tasks.size));
   const runs = Math.max(...list.map(s => s.runs));
   const top = list[0];
-  const all = list.every(s => s.hits === s.n);
   const ceiling = list.length > 1 && list.every(s => s.hits / s.n >= 0.9);
-  const verb = write ? "solved" : "found";
-  const noun = write ? plural(n, "task") : plural(n, "planted bug");
-  const every = list.length === 2 ? "Both models" : "Every model";
-  let headline, sub;
-  if (list.length === 1) {
-    headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = write ? `Coding tasks from ${repoName()}, ${top.runs > 1 ? "over " + plural(top.runs, "run") : "one run"}.` : "Code reviews of real changes, each with one planted bug.";
-  } else if (ceiling) {
-    headline = n === 1 ? `${every} ${verb} the ${write ? "task" : "planted bug"}`
-      : all ? `${every} ${verb} all ${noun}` : `${every} ${verb} nearly all ${noun}`;
-    sub = "These tasks were too easy to tell the models apart.";
-  } else if (closeCall(list)) {
-    headline = "Too close to call";
-    sub = `${top.label} ${verb} ${top.hits} of ${top.n}, ${list[1].label} ${list[1].hits} of ${list[1].n}: on ${noun}, a gap this small can be chance.`;
-  } else {
-    headline = `${top.label} ${verb} ${top.hits} of ${top.n}`;
-    sub = `Ahead of ${list[1].label} with ${list[1].hits} of ${list[1].n}, on ${write ? "coding tasks" : "code reviews"} from ${repoName()}.`;
-  }
   return {
-    n, runs, easy: ceiling,
-    key: kind + "-score", kicker: write ? "Coding tasks solved" : "Bugs found in code review", headline, sub,
+    n, runs, easy: ceiling, close: !ceiling && closeCall(list),
+    key: kind + "-score",
     rows: list.map(s => ({
       name: s.model, tag: s.tag, detail: s.detail, color: color(s.key),
       segs: Array.from({ length: s.n }, (_, i) => i < s.hits ? "w" : "l"),
@@ -206,10 +222,8 @@ function qualitySpec(color) {
   const top = list[0], next = list[1];
   const clear = next ? (top.w - top.l) - (next.w - next.l) >= 2 : top.w > top.l;
   return {
-    n: q.length, runs: 1,
-    key: "write-quality", kicker: "Better solution when both passed",
-    headline: clear ? `${top.label} wrote the better solution ${top.w} of ${top.segs.length} times` : "No clear winner on quality",
-    sub: "A blind AI judge compared solutions that both passed, in both orders.",
+    n: q.length, runs: 1, clear,
+    key: "write-quality",
     rows: list.map(s => ({
       name: s.model, tag: s.tag, detail: s.detail, color: color(s.key), segs: s.segs,
       value: `${s.w} / ${s.segs.length} won`, note: `${s.t} tie · ${s.l} lost`,
@@ -219,11 +233,9 @@ function qualitySpec(color) {
 
 
 
-// ---- Drawing -----------------------------------------------------------
-// One dashboard: brand row, headline result, a main panel with the coding tasks,
-// side panels for quality and review, and the numbers behind it in a footer.
-// Laid out landscape, 2:1 by default and wider when the window is short; on a narrow window the panels
-// stack instead. Every size is a step of the shared type scale times `s`.
+// ---- The shared image ------------------------------------------------
+// One 1200 x 600 card: brand row, the intro, a main panel with the coding tasks,
+// side panels for quality and review, and the credit line.
 
 const font = (size, weight = 400) => `${weight} ${size}px ${FONT}`;
 
@@ -331,10 +343,22 @@ function panelsOf() {
   return { main, side, write, review, quality };
 }
 
-const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison")
+// The panel's note: how much it rests on, and "too close to call" when a gap may be chance.
+const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.clear ? "" : " · no clear winner")
   : p.easy ? "too easy to tell apart"
   : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")} · ${p.runs === 1 ? "1 run each" : p.runs + " runs each"}`
-    + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "");
+    + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "")
+    + (p.close ? " · too close to call" : "");
+
+// What the page is, in two plain sentences, above the results.
+function intro(P) {
+  return {
+    headline: `How AI models do on ${repoName()}`,
+    sub: [P.write ? "Each model gets real changes from the project's history to make again, and the change's own tests decide whether it succeeded." : "",
+      P.review ? "In review, each model looks for one bug planted in a real change." : "",
+      DATA.quick ? "A quick run, on few tasks." : ""].filter(Boolean).join(" "),
+  };
+}
 const titleOf = p => p.key === "write-quality" ? "Better solution when both passed"
   : p.key === "write-score" ? "Coding tasks solved" : "Planted bugs found in review";
 
@@ -361,70 +385,49 @@ function apartCount() {
 }
 
 
-// Narrow windows stack the panels; this is the height they need at width w.
-function stackedHeight(w, P) {
-  const s = Math.min(1, Math.max(.75, w / 520)), pad = 16 * s, gap = 16 * s;
-  let h = pad + 28 * s + 104 * s;
-  for (const p of [P.main, ...P.side]) h += 76 * s + p.rows.length * (p === P.main ? 56 : 34) * s + gap;
-  return h + 72 * s + pad;
+function wrapLines(x, text, maxW, most) {
+  const lines = [];
+  for (const word of text.split(" ")) {
+    const last = lines.length ? lines[lines.length - 1] : null;
+    if (last !== null && x.measureText(last + " " + word).width <= maxW) lines[lines.length - 1] = last + " " + word;
+    else lines.push(word);
+  }
+  if (lines.length > most) { lines.length = most; lines[most - 1] = ellipsize(x, lines[most - 1] + "…", maxW); }
+  return lines;
 }
 
-// `brand` draws the logo row, for the shared image; on screen the page header has it.
-function drawDashboard(c, w, h, T, stacked, brand = true) {
-  const dpr = c._dpr || 1;
-  const x = c.getContext("2d");
+function drawDashboard(c, w, h, T) {
+  const dpr = c._dpr || 1, x = c.getContext("2d"), s = 1, pad = 32, gap = 24;
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.textBaseline = "alphabetic";
-  const P = panelsOf();
+  const P = panelsOf(), I = intro(P);
   x.fillStyle = T.page; x.fillRect(0, 0, w, h);
-  const s = stacked ? Math.min(1, Math.max(.75, w / 520)) : Math.max(.55, Math.min(w / 1200, h / 600, 2.5));
-  const pad = (stacked ? 16 : 32) * s, gap = (stacked ? 16 : 24) * s;
-
-  // Brand row.
-  if (brand) {
-  drawLogo(x, pad, pad, 28 * s, T.accent);
-  setFont(x, 16 * s, 650); x.fillStyle = T.text; x.fillText("Barton-eval", pad + 38 * s, pad + 20 * s);
-  setFont(x, 14 * s, 400); x.fillStyle = T.muted; x.textAlign = "right";
-  const where = repoName() + (DATA.quick ? " · quick run" : "");
-  x.fillText(ellipsize(x, where, w / 2 - pad), w - pad, pad + 20 * s); x.textAlign = "left";
-  }
-  const head = brand ? pad + 28 * s : pad - 20 * s;
+  drawLogo(x, pad, pad, 28, T.accent);
+  setFont(x, 16, 650); x.fillStyle = T.text; x.fillText("Barton", pad + 38, pad + 20);
   if (!P.main) {
-    setFont(x, 20 * s, 400); x.fillStyle = T.muted;
-    x.fillText("No scored runs yet. Ask your agent to continue the Barton run.", pad, head + 68 * s);
+    setFont(x, 20, 400); x.fillStyle = T.muted;
+    x.fillText("No scored runs yet. Ask your agent to continue the Barton run.", pad, pad + 96);
     return;
   }
-
-  // Headline result: the largest step of the scale that fits.
-  let y = head + 56 * s;
-  for (const size of [48, 40, 36, 28, 24, 20]) {
-    setFont(x, size * s, 650, -0.02 * size * s);
-    if (x.measureText(P.main.headline).width <= w - 2 * pad || size === 20) break;
+  const y = pad + 28 + 56;
+  for (const size of [40, 36, 28, 24]) {
+    setFont(x, size, 650, -0.02 * size);
+    if (x.measureText(I.headline).width <= w - 2 * pad || size === 24) break;
   }
-  x.fillStyle = T.text; x.fillText(ellipsize(x, P.main.headline, w - 2 * pad), pad, y);
-  setFont(x, 16 * s, 400); x.fillStyle = T.muted;
-  x.fillText(ellipsize(x, P.main.sub, w - 2 * pad), pad, y + 28 * s);
-  const top = y + 56 * s;
+  x.fillStyle = T.text; x.fillText(ellipsize(x, I.headline, w - 2 * pad), pad, y);
+  setFont(x, 16, 400); x.fillStyle = T.muted;
+  const lines = wrapLines(x, I.sub, w - 2 * pad, 2);
+  lines.forEach((l, i) => x.fillText(l, pad, y + 30 + i * 22));
+  const top = y + 30 + (lines.length - 1) * 22 + 28;
 
-  // Footer: who made it and where it lives, on its own.
-  const footH = 48 * s, footY = h - pad - footH;
-  x.fillStyle = T.border; x.fillRect(pad, footY - 16 * s, w - 2 * pad, 1);
-  x.textAlign = stacked ? "left" : "right"; const fx = stacked ? pad : w - pad;
-  setFont(x, 12 * s, 600, .72 * s); x.fillStyle = T.muted; x.fillText("RUN WITH BARTON-EVAL · BY KULLEVI", fx, footY + 14 * s);
-  setFont(x, 14 * s, 400); x.fillText("github.com/Kullevi/barton-eval", fx, footY + 38 * s);
+  // Credit, on one line at the foot.
+  const footY = h - pad, link = "github.com/Kullevi/barton-eval";
+  x.fillStyle = T.border; x.fillRect(pad, footY - 34, w - 2 * pad, 1);
+  x.textAlign = "right"; x.fillStyle = T.muted;
+  setFont(x, 14, 400); x.fillText(link, w - pad, footY); const lw = x.measureText(link).width;
+  setFont(x, 12, 600, .72); x.fillText("RUN WITH BARTON-EVAL · BY KULLEVI · ", w - pad - lw, footY);
   x.textAlign = "left";
 
-  // Panels.
-  const bottom = footY - 32 * s;
-  if (stacked) {
-    let py = top;
-    for (const p of [P.main, ...P.side]) {
-      const large = p === P.main, ph = 76 * s + p.rows.length * (large ? 56 : 34) * s;
-      drawRows(x, T, s, p.rows, drawPanel(x, T, s, pad, py, w - 2 * pad, ph, titleOf(p), noteOf(p)), large);
-      py += ph + gap;
-    }
-    return;
-  }
-  const full = w - 2 * pad;
+  const bottom = footY - 50, full = w - 2 * pad;
   const mainW = P.side.length ? (full - gap) * .6 : full;
   drawRows(x, T, s, P.main.rows, drawPanel(x, T, s, pad, top, mainW, bottom - top, titleOf(P.main), noteOf(P.main)), true);
   if (!P.side.length) return;
@@ -440,9 +443,35 @@ function drawDashboard(c, w, h, T, stacked, brand = true) {
 
 // ---- Page --------------------------------------------------------------
 
-function paint(c, w, h, T, stacked, dpr, brand = true) {
-  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c._dpr = dpr;
-  drawDashboard(c, w, h, T, stacked, brand);
+// One panel on the page: title and note, then a row per setting with its bar.
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function panelEl(p, large, T) {
+  const box = el("section", "panel"), head = el("div", "ptitle"), rows = el("div", "rows");
+  head.append(el("b", "", titleOf(p)), el("span", "", noteOf(p)));
+  for (const r of p.rows) {
+    const colour = T.series[r.color], row = el("div", "row"), who = el("div", "who"), dot = el("span", "dot");
+    dot.style.background = colour;
+    who.append(dot, el("span", "name", r.name));
+    if (large) who.append(el("span", "detail", r.detail));
+    else if (r.tag) who.append(el("span", "tag", " " + r.tag));
+    const bar = el("div", "track"), n = r.segs.length || 1;
+    for (const [v, fill] of [["w", colour], ["t", T.tie]]) {
+      const part = el("i");
+      part.style.width = `${100 * r.segs.filter(k => k === v).length / n}%`; part.style.background = fill;
+      bar.append(part);
+    }
+    const val = el("div", "val", r.value);
+    if (large && r.note) val.append(el("small", "", r.note));
+    row.append(who, bar, val); rows.append(row);
+  }
+  box.append(head, rows);
+  return box;
 }
 
 function render() {
@@ -454,34 +483,39 @@ function render() {
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton results · ${repoName()}`;
   const off = (DATA.excluded || []).length, few = DATA.partial || [];
-  $("meta").textContent = repoName();
+  $("meta").textContent = "";
   // A public repository may be in a model's training data, which the details say.
   $("left").textContent = [DATA.public == null ? "" : DATA.public ? "A public repository: its code may have been in the models' training data." : "",
     off ? `${plural(off, "faulty task")} left off, listed at the end.` : "",
     few.length ? `Not on the cards yet, too few results: ${few.map(p => p.setting.split("|").filter((v, i) => i !== 1).join(" ") + ` (${p.tasks})`).join(", ")}.` : "",
   ].filter(Boolean).join(" ");
-  const c = $("dash"), w = $("wrap").clientWidth - 32;
-  // The page's own edges line up with the dashboard's panels.
-  const sc = w < 720 ? Math.min(1, Math.max(.75, w / 520)) : Math.max(.55, Math.min(w / 1200, 2.5));
-  document.documentElement.style.setProperty("--edge", `${16 + (w < 720 ? 16 : 32) * sc}px`);
-  const avail = innerHeight - $("wrap").getBoundingClientRect().top - 16 + scrollY;
-  const stacked = w < 720;
-  const P = panelsOf();
-  const h = stacked && P.main ? stackedHeight(w, P) : Math.max(320, Math.min(Math.max(avail, w * .42), w / 2));
-  view = { w, h, stacked };
-  // On screen the page header carries the logo row, so the canvas is that much shorter.
-  const sh = h - 48 * (stacked ? Math.min(1, Math.max(.75, w / 520)) : 1);
-  c.style.height = sh + "px";
-  paint(c, w, sh, T, stacked, devicePixelRatio || 1, false);
-  if (P.main) c.setAttribute("aria-label", `${P.main.headline}. ${P.main.sub}`);
+  const P = panelsOf(), I = intro(P), grid = $("grid");
+  $("headline").textContent = P.main ? I.headline : "No scored runs yet";
+  $("sub").textContent = P.main ? I.sub : "Ask your agent to continue the Barton run.";
+  grid.innerHTML = ""; grid.className = "grid" + (P.side.length ? "" : " one");
+  if (P.main) {
+    grid.append(panelEl(P.main, true, T));
+    if (P.side.length) { const side = el("div", "side"); for (const p of P.side) side.append(panelEl(p, false, T)); grid.append(side); }
+  }
   renderTable();
+  fitWindow();
 }
 
-// The image to share: the dashboard as shown, at least twice the screen's resolution and 2400 px wide.
-let view = { w: 1200, h: 600, stacked: false };
+// In an app window the page sets the window's height to its content, up to the
+// screen: once at the start and again when the task table opens or closes.
+const appWindow = new URLSearchParams(location.search).get("app") === "1";
+function fitWindow() {
+  if (!appWindow) return;
+  const want = document.documentElement.scrollHeight + outerHeight - innerHeight;
+  const height = Math.min(want, screen.availHeight);
+  if (Math.abs(height - outerHeight) > 2) { try { resizeTo(outerWidth, height); } catch (e) { /* a normal tab cannot be resized */ } }
+}
+
+// The image to share: a 1200 x 600 card at twice that resolution.
 function shareImage(cb) {
-  const c = document.createElement("canvas");
-  paint(c, view.w, view.h, THEMES[themeName()], view.stacked, Math.max(2, devicePixelRatio || 1, 2400 / view.w));
+  const c = document.createElement("canvas"), w = 1200, h = 600, dpr = 2;
+  c.width = w * dpr; c.height = h * dpr; c._dpr = dpr;
+  drawDashboard(c, w, h, THEMES[themeName()]);
   c.toBlob(cb, "image/png");
 }
 
@@ -552,6 +586,7 @@ $("copy").addEventListener("click", async () => {
   setTimeout(() => btn.textContent = "Copy image", 2000);
 });
 $("save").addEventListener("click", () => shareImage(save));
+document.querySelector("details.below").addEventListener("toggle", fitWindow);
 let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 60); });
 render();

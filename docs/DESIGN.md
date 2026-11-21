@@ -120,17 +120,19 @@ comparison down to the few tasks it reached.
   share made.
 - Only the result: the shared image carries no settings, judges or dates, and
   the task-by-task table stays folded under the cards.
-- "Too close to call" when the top two differ by less than two standard
+- "Too close to call", noted on the card, when the top two differ by less than two standard
   errors of the difference between two proportions, or by fewer than two
   tasks: with a handful of tasks most gaps are noise, with fifty they are not.
-- The judging method, judge model, runs per setting and the harness ("via
-  Codex CLI") are on the card: the result is the model in that harness.
+- The harness ("Codex CLI") and runs per setting are on the card: the result
+  is the model in that harness.
 - Cost: Claude Code reports cost; for Codex it is estimated from tokens at list
   prices (`prices.json`) and marked "est.". On a subscription the user may not
   pay per run.
-- Credit line: "Run with Barton-eval · open source by Kullevi", with the user's
-  own name as the author of the result, so it reads as their finding, not
-  Kullevi's claim.
+- Above the results, two plain sentences on how Barton tests, not a verdict;
+  below them, one credit line: "Run with Barton-eval · by Kullevi" and the
+  repository link.
+- The page is plain HTML, so its text can be selected and its link followed;
+  only the shared image is drawn on a canvas.
 
 ## Studied
 

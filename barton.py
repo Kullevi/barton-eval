@@ -1554,11 +1554,12 @@ def app_browser() -> str | None:
 
 def open_window(url: str) -> None:
     """Opens the results in an app window of their own, like a desktop program, the
-    way Girdish and Kuakgan open theirs. Falls back to an ordinary browser tab."""
+    way Girdish and Kuakgan open theirs; the page fits the window's height to its
+    content (?app=1). Falls back to an ordinary browser tab."""
     browser = app_browser()
     if browser:
         try:
-            subprocess.Popen([browser, f"--app={url}", "--window-size=1500,950"],
+            subprocess.Popen([browser, f"--app={url}?app=1", "--window-size=1500,900"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         except OSError:

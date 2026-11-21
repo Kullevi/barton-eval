@@ -346,7 +346,7 @@ function panelsOf() {
 // The panel's note: how much it rests on, and "too close to call" when a gap may be chance.
 const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.clear ? "" : " · no clear winner")
   : p.easy ? "too easy to tell apart"
-  : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")} · ${p.runs === 1 ? "1 run each" : p.runs + " runs each"}`
+  : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")}${p.runs === 1 ? "" : ` · ${p.runs} runs each`}`
     + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "")
     + (p.close ? " · too close to call" : "");
 
@@ -354,9 +354,9 @@ const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.c
 // ran on this codebase, not on a general benchmark.
 function intro(P) {
   return {
-    headline: hidden() ? "Which AI model works best on this codebase?" : `Which AI model works best on ${DATA.repo}'s own code?`,
-    sub: [P.write ? "Each model redid real changes from this codebase's history, and the original tests decided whether it succeeded." : "",
-      P.review ? "Each also reviewed real changes with one planted bug." : "",
+    headline: "AI models, tested on my own codebase",
+    sub: ["Not a general benchmark.",
+      P.write ? "Each model redid real changes from this code's history, and the original tests decided whether it succeeded." : "Each model reviewed real changes from this code's history, with one planted bug to find.",
       DATA.quick ? "A quick run, on few tasks." : ""].filter(Boolean).join(" "),
   };
 }
@@ -404,6 +404,8 @@ function drawDashboard(c, w, h, T) {
   x.fillStyle = T.page; x.fillRect(0, 0, w, h);
   drawLogo(x, pad, pad, 28, T.accent);
   setFont(x, 16, 650); x.fillStyle = T.text; x.fillText("Barton", pad + 38, pad + 20);
+  setFont(x, 14, 400); x.fillStyle = T.muted; x.textAlign = "right";
+  x.fillText(ellipsize(x, repoName(), w / 2 - pad), w - pad, pad + 20); x.textAlign = "left";
   if (!P.main) {
     setFont(x, 20, 400); x.fillStyle = T.muted;
     x.fillText("No scored runs yet. Ask your agent to continue the Barton run.", pad, pad + 96);
@@ -484,7 +486,7 @@ function render() {
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton results · ${repoName()}`;
   const off = (DATA.excluded || []).length, few = DATA.partial || [];
-  $("meta").textContent = "";
+  $("meta").textContent = repoName();
   // A public repository may be in a model's training data, which the details say.
   $("left").textContent = [DATA.public == null ? "" : DATA.public ? "A public repository: its code may have been in the models' training data." : "",
     off ? `${plural(off, "faulty task")} left off, listed at the end.` : "",
@@ -507,7 +509,8 @@ function render() {
 const appWindow = new URLSearchParams(location.search).get("app") === "1";
 function fitWindow() {
   if (!appWindow) return;
-  const want = document.documentElement.scrollHeight + outerHeight - innerHeight;
+  // The body's own height: the document's is never less than the window's.
+  const want = Math.ceil(document.body.getBoundingClientRect().height) + outerHeight - innerHeight;
   const height = Math.min(want, screen.availHeight);
   if (Math.abs(height - outerHeight) > 2) { try { resizeTo(outerWidth, height); } catch (e) { /* a normal tab cannot be resized */ } }
 }

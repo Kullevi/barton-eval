@@ -151,6 +151,7 @@ def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
     else:
         kw["start_new_session"] = True  # its own process group, so the group can be stopped
     p = subprocess.Popen(cmd, **kw)
+    LIVE.add(p)
     try:
         so, se = p.communicate(stdin_text.encode("utf-8") if stdin_text is not None else None,
                                timeout=timeout)
@@ -159,8 +160,30 @@ def run_cmd(cmd: list[str] | str, cwd: Path, timeout: int, shell: bool = False,
         stop_tree(p)
         so, se = p.communicate()
         to = True
+    finally:
+        LIVE.discard(p)
     return ((-1 if to else p.returncode), so.decode("utf-8", "replace"),
             se.decode("utf-8", "replace"), time.time() - t0, to)
+
+
+# What a run has going, so that stopping Barton stops it too: model CLIs and checks
+# run in sessions of their own, which Ctrl-C or a kill of Barton does not reach.
+LIVE: set = set()
+FOLDERS: set = set()
+
+
+def stop_everything(signum=None, frame=None) -> None:
+    """Stop every model CLI and check this run started, remove its task folders, exit.
+
+    Nothing is recorded: a run cut short is not a result, and runs again next time."""
+    for p in list(LIVE):
+        stop_tree(p)
+    for f in list(FOLDERS):
+        remove_tree(f)
+    out({"stopped": "Barton was stopped; the runs in progress were not recorded and run "
+                    "again next time."})
+    sys.stdout.flush()
+    os._exit(130)
 
 
 def stop_tree(p: subprocess.Popen) -> None:
@@ -1015,6 +1038,17 @@ def estimate_cost(model: str, u: dict, day: str | None = None) -> float | None:
 
 def cmd_run(args) -> None:
     """Run one model on the given tasks (or `all`), several at once, and record each."""
+    import signal
+    sigs = [getattr(signal, n) for n in ("SIGINT", "SIGTERM", "SIGBREAK") if hasattr(signal, n)]
+    before = {sig: signal.signal(sig, stop_everything) for sig in sigs}
+    try:
+        run_tasks(args)
+    finally:
+        for sig, handler in before.items():
+            signal.signal(sig, handler)
+
+
+def run_tasks(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     if args.tasks == ["all"]:
@@ -1050,7 +1084,11 @@ def cmd_run(args) -> None:
             return "error"
 
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        outcomes = list(pool.map(one, todo))
+        futures = [pool.submit(one, t) for t in todo]
+        # Wait in short steps: a signal reaches Barton only between them on Windows.
+        while not all(f.done() for f in futures):
+            time.sleep(0.2)
+        outcomes = [f.result() for f in futures]
     try:
         WORK_ROOT.rmdir()  # only when every task folder is gone
     except OSError:
@@ -1073,6 +1111,7 @@ def run_one(b: Barton, task: dict, args) -> dict:
     else:
         folder = make_folder(b, task["base"], folder_name)
         prompt = task["prompt"] + WRITE_RULES
+    FOLDERS.add(folder)
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
         cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt,
@@ -1149,6 +1188,7 @@ def run_one(b: Barton, task: dict, args) -> dict:
         # Every run cleans up after itself, also after an error or an interruption.
         if not args.keep:
             remove_tree(folder)
+        FOLDERS.discard(folder)
 
 
 CLIP = 300_000  # characters of one diff or review in a judge bundle

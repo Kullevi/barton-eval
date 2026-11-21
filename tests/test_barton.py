@@ -113,6 +113,33 @@ class RepoTest(unittest.TestCase):
         call("clean")
         self.assertFalse(barton.template_root().exists())
 
+    def test_stopping_barton_stops_what_its_runs_started(self):
+        # Ctrl-C or a kill must not leave a model CLI or a check running on its own.
+        spec = Path(self.tmp.name) / "t.json"
+        spec.write_text(json.dumps({"id": "t", "kind": "write", "base": self.fix + "^",
+                                    "reference": self.fix, "prompt": "Add clamp."}))
+        call("task-add", "--repo", str(self.repo), str(spec))
+        mark = Path(self.tmp.name) / "child-still-ran.txt"
+        child = Path(self.tmp.name) / "child.py"
+        child.write_text(f"import time, pathlib\ntime.sleep(4)\npathlib.Path({str(mark)!r}).write_text('x')\n")
+        fake = Path(self.tmp.name) / "fake.py"
+        fake.write_text(
+            "import subprocess, sys, time\n"
+            "kw = {'start_new_session': True} if sys.platform != 'win32' else {}\n"
+            f"subprocess.Popen([sys.executable, {str(child)!r}], **kw)\n"
+            "time.sleep(60)\n")
+        import signal
+        import threading
+        threading.Timer(2, signal.raise_signal, [signal.SIGINT]).start()
+        with unittest.mock.patch.object(barton, "harness_cmd", return_value=[sys.executable, str(fake)]), \
+                unittest.mock.patch.object(barton.os, "_exit", side_effect=SystemExit(130)), \
+                contextlib.redirect_stdout(io.StringIO()) as buf, self.assertRaises(SystemExit):
+            barton.main(["run", "--repo", str(self.repo), "t", "--harness", "claude", "--model", "m"])
+        self.assertIn("Barton was stopped", buf.getvalue())
+        self.assertEqual(list(barton.WORK_ROOT.glob("t-*")), [])  # its task folder is gone
+        time.sleep(4)
+        self.assertFalse(mark.exists())  # what the model started was stopped too
+
     def test_run_all_runs_tasks_at_once_and_cleans_up(self):
         for i in range(3):
             spec = Path(self.tmp.name) / f"t{i}.json"

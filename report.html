@@ -350,12 +350,13 @@ const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.c
     + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "")
     + (p.close ? " · too close to call" : "");
 
-// What the page is, in two plain sentences, above the results.
+// What the page answers and how, above the results: the point is that the test
+// ran on this codebase, not on a general benchmark.
 function intro(P) {
   return {
-    headline: `How AI models do on ${repoName()}`,
-    sub: [P.write ? "Each model gets real changes from the project's history to make again, and the change's own tests decide whether it succeeded." : "",
-      P.review ? "In review, each model looks for one bug planted in a real change." : "",
+    headline: hidden() ? "Which AI model works best on this codebase?" : `Which AI model works best on ${DATA.repo}'s own code?`,
+    sub: [P.write ? "Each model redid real changes from this codebase's history, and the original tests decided whether it succeeded." : "",
+      P.review ? "Each also reviewed real changes with one planted bug." : "",
       DATA.quick ? "A quick run, on few tasks." : ""].filter(Boolean).join(" "),
   };
 }

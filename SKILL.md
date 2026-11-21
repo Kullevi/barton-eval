@@ -115,6 +115,8 @@ Look at the repository yourself and decide how its code and tests run.
 - `barton config --public yes|no`: always set it, so the results page says it.
   Check the git remote; ask only if you cannot tell. Public code may have been in a model's
   training data, and the card says so.
+- `barton config --name <name>`: only when the folder's name is not the project's
+  name, such as a copy made for the runs; the results page uses it.
 
 ## 4. Choose tasks
 

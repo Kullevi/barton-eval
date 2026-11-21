@@ -710,12 +710,14 @@ def cmd_config(args) -> None:
         cfg["copy"] = [x for x in args.copy if x]
     if args.public is not None:
         cfg["public"] = args.public == "yes"
+    if args.name is not None:
+        cfg["name"] = args.name
     if args.check_timeout is not None:
         cfg["check_timeout"] = args.check_timeout * 60
     if args.codex_sandbox is not None:
         cfg["codex_sandbox"] = args.codex_sandbox == "on"
     b.save_config(cfg)
-    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public", "check_timeout", "codex_sandbox")})
+    out({k: cfg.get(k) for k in ("setup", "link", "copy", "public", "name", "check_timeout", "codex_sandbox")})
 
 
 def cmd_task_remove(args) -> None:
@@ -1593,7 +1595,7 @@ def cmd_report(args) -> None:
     shared = set.intersection(*done.values()) if done else set()
     left_out = sorted({r["task"] for r in rows} - shared)
     tasks = [t for t in cfg.get("tasks", []) if t["id"] in shared]
-    data = {"repo": b.repo.name, "generated": now(), "barton": VERSION,
+    data = {"repo": cfg.get("name") or b.repo.name, "generated": now(), "barton": VERSION,
             "public": cfg.get("public"), "quick": bool(args.quick), "left_out": left_out,
             "excluded": excluded,
             "tasks": [{k: t.get(k) for k in ("id", "kind", "source", "prompt")}
@@ -1698,6 +1700,7 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--link", nargs="*", help="folders linked from the repo, e.g. node_modules")
     sp.add_argument("--copy", nargs="*", help="untracked files copied in, e.g. .env")
     sp.add_argument("--public", choices=["yes", "no"], help="is the repo public?")
+    sp.add_argument("--name", help="the project's name on the results page, when the folder's name is not it")
     sp.add_argument("--check-timeout", type=int, metavar="MINUTES",
                     help="how long one check may take (default 15), longer if checks queue for a build slot")
     sp.add_argument("--codex-sandbox", choices=["on", "off"],

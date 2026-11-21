@@ -662,6 +662,58 @@ def cmd_task_remove(args) -> None:
     out({"removed": args.task if len(cfg["tasks"]) < before else None, "tasks": len(cfg["tasks"])})
 
 
+def cmd_exclude(args) -> None:
+    """Take a faulty task off the cards, with the reason shown, instead of deleting it.
+
+    A task is faulty when its check asks for something its prompt leaves open or
+    contradicts: every model then fails it for the task's fault, not its own."""
+    b = Barton(Path(args.repo))
+    b.task(args.task)
+    cfg = b.config()
+    for t in cfg["tasks"]:
+        if t["id"] == args.task:
+            if args.undo:
+                t.pop("excluded", None)
+            else:
+                t["excluded"] = args.reason or fail("Give the reason with --reason.")
+    b.save_config(cfg)
+    out({"task": args.task, "excluded": None if args.undo else args.reason})
+
+
+def cmd_fairness(args) -> None:
+    """A bundle for a fresh judge: does the check ask for more than the prompt says?
+
+    For a coding task every setting failed, and for any task before its first run."""
+    b = Barton(Path(args.repo))
+    task = b.task(args.task)
+    if task["kind"] != "write" or not task.get("check"):
+        fail("A fairness check is for coding tasks with a check.")
+    files = task["check"].get("files", [])
+    tests = git(b.repo, "diff", task["base"], task["reference"], "--", *files) if files else ""
+    written = "\n".join(f"## {rel}\n\n```\n{text}\n```" for rel, text in task["check"].get("write", {}).items())
+    parts = [f"# Task given to the model\n\n{task['prompt']}\n",
+             "Below are the hidden tests that decide whether a solution passes, and how "
+             "solutions failed them. Decide whether the task is fair: could a careful engineer "
+             "who reads only the task write code that passes, or do the tests require something "
+             "the task leaves open (an exact name, code, message, value or format with more than "
+             "one reasonable reading) or contradicts? Answer `fair` or `unfair`, and in one "
+             "sentence name what the tests require that the task does not say.\n",
+             f"# Hidden tests (what the original change added)\n\n```diff\n{clipped(tests)}\n```\n"
+             + (f"\n{written}\n" if written else "")]
+    fails = [r for r in current_rows(b) if r["task"] == task["id"] and r["outcome"] == "failed"]
+    for i, r in enumerate(fails[:3]):
+        chk = b.dir / "runs" / r["run"] / "check.txt"
+        if chk.exists():
+            tail = json.loads(chk.read_text(encoding="utf-8")).get("tail", "")
+            parts.append(f"# How solution {i + 1} failed\n\n```\n{clipped(tail)}\n```\n")
+    dest = b.dir / "fairness" / f"{task['id']}.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text("\n".join(parts), encoding="utf-8")
+    out({"task": task["id"], "bundle": str(dest), "failed_runs": len(fails),
+         "note": "Give it to a fresh judge. If unfair before any run, sharpen the prompt; "
+                 "after runs the task is frozen, so `barton exclude` it with the judge's reason."})
+
+
 def cmd_validate(args) -> None:
     """A check must fail before the change and pass, twice, with it."""
     b = Barton(Path(args.repo))
@@ -966,7 +1018,7 @@ def cmd_run(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     if args.tasks == ["all"]:
-        ids = [t["id"] for t in cfg.get("tasks", [])]
+        ids = [t["id"] for t in cfg.get("tasks", []) if not t.get("excluded")]
     elif args.tasks == ["quick"]:
         ids = cfg.get("quick") or fail("No quick set yet. Run `barton quick` first.")
     else:
@@ -1300,6 +1352,24 @@ def cmd_prefer(args) -> None:
     out({"recorded": args.pair, "choice": args.choice})
 
 
+def judge_order(b: Barton) -> dict:
+    """How often each pairwise judge chose the first, the second or neither.
+
+    Both orders are asked, so a judge that mostly picks one position turns most of
+    its answers into ties; a share far from even says the judge is weak here."""
+    seen: dict[str, dict] = {}
+    for p in b.prefs():
+        c = seen.setdefault(p["judge_model"], {"first": 0, "second": 0, "tie": 0})
+        c[p["choice"]] += 1
+    for c in seen.values():
+        picked = c["first"] + c["second"]
+        c["second_share"] = round(c["second"] / picked, 2) if picked else None
+        c["note"] = ("Picks one position most of the time, so most of its answers cancel "
+                     "to ties; prefer a stronger judge." if picked >= 10
+                     and abs(c["second_share"] - .5) > .2 else "")
+    return seen
+
+
 def quality(b: Barton) -> list[dict]:
     """Wins, ties and losses per setting from preferences that agree in both orders."""
     rows = {r["run"]: r for r in current_rows(b)}
@@ -1359,8 +1429,10 @@ def cmd_status(args) -> None:
             s["cost_usd"] = None if r.get("cost_usd") is None else s["cost_usd"] + r["cost_usd"]
     out({"tasks": [{"id": t["id"], "kind": t["kind"], "source": t.get("source"),
                     "check": bool(t.get("check") or (t.get("plant") or {}).get("check")), "valid": (t.get("validated") or {}).get("ok")}
+                   | ({"excluded": t["excluded"]} if t.get("excluded") else {})
                    for t in cfg.get("tasks", [])],
          "runs": len(rows), "by_model": summary, "quick": cfg.get("quick", []),
+         "judges": judge_order(b),
          "task_set": task_age(cfg, rows)})
 
 
@@ -1370,6 +1442,9 @@ def cmd_report(args) -> None:
     ids = set(cfg.get("quick") or []) if args.quick else {t["id"] for t in cfg.get("tasks", [])}
     if args.quick and not ids:
         fail("No quick set yet. Run `barton quick` first.")
+    excluded = [{"id": t["id"], "reason": t["excluded"]} for t in cfg.get("tasks", [])
+                if t["id"] in ids and t.get("excluded")]
+    ids -= {e["id"] for e in excluded}
     rows = [r for r in current_rows(b) if r["task"] in ids]
     # Every model is compared on the same tasks: a task some model has no result for
     # (not run yet, or an error to fix) is left off the cards until it does.
@@ -1382,6 +1457,7 @@ def cmd_report(args) -> None:
     tasks = [t for t in cfg.get("tasks", []) if t["id"] in shared]
     data = {"repo": b.repo.name, "generated": now(), "barton": VERSION,
             "public": cfg.get("public"), "quick": bool(args.quick), "left_out": left_out,
+            "excluded": excluded,
             "tasks": [{k: t.get(k) for k in ("id", "kind", "source", "prompt")}
                       | {"check": bool(t.get("check"))} for t in tasks],
             "results": [r for r in rows if r["task"] in shared],
@@ -1412,7 +1488,7 @@ def cmd_quick(args) -> None:
     for kind, want in (("write", args.coding), ("review", args.reviews)):
         scored = []
         for t in cfg.get("tasks", []):
-            if t["kind"] != kind or (kind == "write" and not t.get("check")):
+            if t["kind"] != kind or (kind == "write" and not t.get("check")) or t.get("excluded"):
                 continue
             rs = [r for r in rows if r["task"] == t["id"]]
             secs = sorted(r["seconds"] for r in rs) or [0]
@@ -1488,6 +1564,12 @@ def main(argv: list[str] | None = None) -> None:
     sp = p("task-add", cmd_task_add, "add a task from a JSON file")
     sp.add_argument("file")
     sp = p("task-remove", cmd_task_remove, "remove a task")
+    sp.add_argument("task")
+    sp = p("exclude", cmd_exclude, "take a faulty task off the cards, with the reason shown")
+    sp.add_argument("task")
+    sp.add_argument("--reason", help="one sentence: what the check asks that the prompt does not say")
+    sp.add_argument("--undo", action="store_true")
+    sp = p("fairness", cmd_fairness, "bundle for a judge: does the check ask more than the prompt says")
     sp.add_argument("task")
     sp = p("validate", cmd_validate, "check fails before and passes after the change")
     sp.add_argument("task")

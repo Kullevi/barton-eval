@@ -270,6 +270,30 @@ class RepoTest(unittest.TestCase):
         d = call("report", "--repo", str(self.repo), "--no-open")
         self.assertEqual((d["tasks"], d["left_out"]), (1, ["b"]))  # m2 has not run b yet
 
+    def test_an_excluded_task_is_left_off_the_cards_with_its_reason(self):
+        self._results([("a", "m1", "solved", 1), ("a", "m2", "failed", 1),
+                       ("b", "m1", "failed", 1), ("b", "m2", "failed", 1)])
+        why = "the check wants an issue code the prompt never names"
+        call("exclude", "--repo", str(self.repo), "b", "--reason", why)
+        d = call("report", "--repo", str(self.repo), "--no-open")
+        self.assertEqual((d["tasks"], d.get("left_out")), (1, None))
+        page = Path(d["report"]).read_text(encoding="utf-8")
+        self.assertIn(why, page)
+        self.assertNotIn("b", call("quick", "--repo", str(self.repo), "--reviews", "0")["quick"])
+        call("exclude", "--repo", str(self.repo), "b", "--undo")
+        self.assertEqual(call("report", "--repo", str(self.repo), "--no-open")["tasks"], 2)
+
+    def test_status_flags_a_judge_that_mostly_picks_one_position(self):
+        b = self._results([])
+        b.init()
+        with (b.dir / "prefs.jsonl").open("a") as f:
+            for i in range(12):
+                f.write(json.dumps({"task": "a", "first": "x", "second": "y", "pair": str(i),
+                                    "choice": "second" if i else "first", "judge_model": "j"}) + "\n")
+        j = call("status", "--repo", str(self.repo))["judges"]["j"]
+        self.assertEqual((j["first"], j["second"]), (1, 11))
+        self.assertIn("stronger judge", j["note"])
+
     def test_run_budget_starts_no_task_after_it(self):
         self._results([])
         with contextlib.redirect_stdout(io.StringIO()) as buf:

@@ -107,7 +107,11 @@ planted bugs, so the card marks the reviews as too easy to tell apart.*
   model as judge.
 - **The limits.** A judge is still a model and can be wrong; a handful of tasks
   is a small sample; a public repository may have been in a model's training
-  data (the card says so); and the result is the model *in that harness*
+  data (the card says so); a task whose tests ask for something its
+  description leaves open fails every model for the task's fault, so your
+  assistant has a fresh judge check each task against its tests before the
+  run, and again for any task no model solved, and leaves a faulty one off the
+  cards with the reason shown; and the result is the model *in that harness*
   (Claude Code, Codex CLI or Antigravity CLI), which the card also says. Running more attempts
   per setting gives a fairer picture.
 
@@ -330,12 +334,13 @@ command prints JSON. Your assistant runs these; you never need to.
 | `config [--setup CMD] [--link PATH...] [--copy PATH...] [--public yes\|no] [--check-timeout MIN] [--codex-sandbox on\|off]` | How task folders are prepared: an install command, folders to link (such as `node_modules`), untracked files to copy (such as `.env`), whether the repo is public, how long one check may take (default 15 minutes), and whether Codex runs in its sandbox (default on). |
 | `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
 | `validate ID` | Check that the task's check fails before the change and passes twice with it. |
+| `fairness ID` / `exclude ID --reason TEXT [--undo]` | Bundle for a judge: do the hidden tests ask for more than the task says? A faulty task is left off the cards, listed with its reason. |
 | `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
 | `quick [--coding N] [--reviews N]` | Choose the quick set: tasks that told models apart first, then the fastest. |
 | `run ID... \| all \| quick --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
 | `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
 | `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
-| `status` | Progress and scores so far. |
+| `status` | Progress and scores so far, and how often each judge picked the first or second solution. |
 | `report [--no-open] [--quick]` | Build the results page and open it in the browser. Models are compared only on tasks every one of them has run; `--quick` shows the quick set and says so on the cards. |
 | `clean` | Remove task folders left by runs that were killed. |
 

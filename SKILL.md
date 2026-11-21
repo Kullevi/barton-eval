@@ -153,6 +153,14 @@ Rules for a good task:
 - Run `barton validate <id>` for every task with a check. It must fail before
   the change and pass twice with it. Drop tasks that fail validation and say how
   many you dropped.
+- **Check that the task is fair before any model runs it.** Run
+  `barton fairness <id>` and give the bundle to a fresh judge: it holds the
+  prompt and what the hidden tests assert. Every exact name, code, message,
+  value or format the tests assert must be stated in the prompt or follow from
+  it with one reasonable reading. If the judge finds one that does not, sharpen
+  the prompt (`task-add` again) and ask again. A test that wants something the
+  prompt leaves open fails every model for the task's fault, and the card then
+  measures nothing.
 - Prefer tasks from different parts of the code, of the kind the user actually
   does. If the history has too few usable commits (common: "fix stuff" commits
   touching many files), write realistic tasks from the current code instead
@@ -236,6 +244,21 @@ and is no longer independent). Record each answer:
 A win counts only when both orders agree; otherwise it is a tie, which cancels
 the judge's habit of favouring the first or the second answer.
 
+**A task no setting solved.** Before showing the result, run
+`barton fairness <id>` for every coding task that every setting failed; the
+bundle now also holds how the solutions failed. Give it to a fresh judge. If the
+tests require something the prompt leaves open or contradicts, the task is
+faulty: it is frozen once run, so take it off the cards with
+`barton exclude <id> --reason "<the judge's sentence>"`; the page still lists it
+with the reason. Never exclude a fair task because it is hard; a task every
+model fails for the models' own fault is a real result. Tell the user how many
+you excluded and why.
+
+**Judges.** `barton status` shows how often each pairwise judge picked the first
+or the second solution. A judge that picks one position most of the time (its
+`note` says so) turns most answers into ties; say so when you show the quality
+card, and prefer a stronger judge next time.
+
 **Too easy?** If the best setting solved 90 % or more of the coding tasks, or
 every model found every planted bug, the run cannot tell the models apart. Before
 you show the result, add harder tasks (larger commits, bug fixes, changes
@@ -252,7 +275,9 @@ Run `barton report`. It opens a page in the browser with ready-made cards:
 tasks solved, better solution when both passed, planted bugs found, time and
 cost per model and effort level.
 Tell the user in a few sentences what the result says about *their* code,
-including where models differed, and that:
+including where models differed and how many tasks told them apart (the table
+marks each task: every setting made it, told settings apart, or no setting made
+it; only the middle kind can show a difference), and that:
 
 - they can type their name or handle on the page, then press **Copy image**
   to paste a card straight into a post;

@@ -360,10 +360,25 @@ const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison")
 const titleOf = p => p.key === "write-quality" ? "Better solution when both passed"
   : p.key === "write-score" ? "Coding tasks solved" : "Planted bugs found in review";
 
+// Which tasks told the settings apart: every one made it, some did, or none did.
+// Only the "some" tasks can show a difference; the others are too easy or too hard here.
+function splitOf(taskId) {
+  const ok = (DATA.results || []).filter(r => r.task === taskId && !["error", "pending"].includes(r.outcome))
+    .map(r => ["solved", "found"].includes(r.outcome));
+  if (!ok.length) return null;
+  return ok.every(Boolean) ? "all" : ok.some(Boolean) ? "some" : "none";
+}
+
+function apartStat(kind) {
+  const split = (DATA.tasks || []).filter(t => t.kind === kind).map(t => splitOf(t.id)).filter(Boolean);
+  return { label: "Told apart", value: `${split.filter(x => x === "some").length} of ${split.length}` };
+}
+
 // The numbers behind the result, shown once in the footer.
 function footerStats(P) {
   const st = [];
   if (P.write) st.push({ label: "Coding tasks", value: String(P.write.n) });
+  if (P.write && settings("write").length > 1) st.push(apartStat("write"));
   if (P.review) st.push({ label: "Reviews", value: String(P.review.n) });
   const runs = Math.max(...[P.write, P.review].filter(Boolean).map(p => p.runs));
   st.push({ label: "Runs each", value: String(runs) });
@@ -487,7 +502,8 @@ function render() {
   $("hide").textContent = hidden() ? "Names hidden" : "Hide names";
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton results · ${repoName()}`;
-  $("meta").textContent = `${plural((DATA.tasks || []).length, "task")} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
+  const off = (DATA.excluded || []).length;
+  $("meta").textContent = `${plural((DATA.tasks || []).length, "task")}${off ? ` (${off} faulty left off)` : ""} · built ${new Date(DATA.generated).toLocaleString()} · Barton-eval ${DATA.barton}`;
   const c = $("dash"), w = $("wrap").clientWidth - 32;
   const avail = innerHeight - $("wrap").getBoundingClientRect().top - 16 + scrollY;
   const stacked = w < 720 || w / avail < 1.2;
@@ -526,7 +542,8 @@ function renderTable() {
     const td = document.createElement("td");
     td.textContent = hidden() ? task.id : `${task.id}: ${(task.prompt || "").slice(0, 160)}${(task.prompt || "").length > 160 ? "…" : ""}`;
     const meta = document.createElement("small");
-    meta.textContent = `${task.kind === "write" ? "coding" : "review"} · ${task.source}${task.check ? " · checked" : ""}`;
+    const split = { all: "every setting made it", some: "told settings apart", none: "no setting made it" }[splitOf(task.id)];
+    meta.textContent = `${task.kind === "write" ? "coding" : "review"} · ${task.source}${task.check ? " · checked" : ""}${split ? " · " + split : ""}`;
     td.appendChild(meta); tr.appendChild(td);
     for (const c of cols) {
       const cell = document.createElement("td");
@@ -541,6 +558,14 @@ function renderTable() {
       tr.appendChild(cell);
     }
     t.appendChild(tr);
+  }
+  // Faulty tasks are left off the cards but stay listed, with the reason.
+  for (const e of DATA.excluded || []) {
+    const tr = document.createElement("tr"), td = document.createElement("td");
+    td.textContent = e.id; td.colSpan = cols.length + 1;
+    const meta = document.createElement("small");
+    meta.textContent = `left off as a faulty task: ${e.reason}`;
+    td.appendChild(meta); tr.appendChild(td); t.appendChild(tr);
   }
 }
 

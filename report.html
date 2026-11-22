@@ -50,18 +50,22 @@ a:hover { text-decoration:underline; }
 .ptitle { display:flex; justify-content:space-between; gap:16px; margin-bottom:16px; font-size:12px; color:var(--muted); }
 .ptitle b { font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
 .rows { flex:1; display:flex; flex-direction:column; justify-content:center; }
-.row { display:grid; grid-template-columns:30% 1fr auto; gap:16px; align-items:center; padding:10px 0; }
+.row { display:grid; grid-template-columns:27% 1fr 84px; gap:20px; align-items:start; padding:12px 0; }
+.side .row { align-items:center; }
+.bars small { display:block; margin-top:6px; font-size:12px; color:var(--muted); }
 .side .row { grid-template-columns:36% 1fr 24%; padding:5px 0; }
 .who { min-width:0; }
 .who .name { font-size:16px; font-weight:650; }
 .side .who .name { font-size:14px; }
 .who .tag, .who .detail { color:var(--muted); }
+.who .name { line-height:20px; }
 .who .detail { display:block; padding-left:16px; }
+.who { margin-top:-3px; }
 .track { display:flex; height:14px; border-radius:7px; background:var(--track); overflow:hidden; }
 .side .track { height:10px; border-radius:5px; }
 .bars { min-width:0; }
-.smallbar { display:block; height:4px; min-width:0; border-radius:2px; margin-top:4px; opacity:.35; }
-.val { text-align:right; font-size:20px; font-weight:650; white-space:nowrap; }
+.smallbar { display:block; height:4px; min-width:0; border-radius:2px; margin-top:3px; opacity:.35; }
+.val { text-align:right; font-size:20px; font-weight:650; white-space:nowrap; line-height:14px; padding-top:3px; }
 .side .val { font-size:14px; }
 .val small { display:block; font-size:12px; font-weight:400; color:var(--muted); }
 .credit { margin:24px var(--edge) 0; padding:16px 0 24px; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 24px; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
@@ -231,8 +235,8 @@ function scoreSpec(kind, color) {
       // Small findings get their own thin bar, one unit per finding like the bugs above
       // it, squeezed only when some model raised more small findings than there are bugs.
       small: write ? null : s.small, smallOf: Math.max(s.n, ...list.map(k => k.small || 0)),
-      value: `${s.hits} / ${s.n}`, note: [write ? "" : `${(s.findings / (s.reviews || 1)).toFixed(1)} findings per review`,
-        write || s.small == null ? "" : `${s.small} small`,
+      value: `${s.hits} / ${s.n}`, note: [write || s.small != null ? "" : `${(s.findings / (s.reviews || 1)).toFixed(1)} findings per review`,
+        write || s.small == null ? "" : `${plural(s.small, "small finding")}, not scored`,
         fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
     })),
   };
@@ -324,7 +328,7 @@ function drawBlocks(x, T, segs, colour, X, Y, w, h) {
 // Rows of one panel. Large rows carry the effort, harness, time and cost on a second line.
 function drawRows(x, T, s, rows, box, large) {
   if (!rows.length) return;
-  const minH = (large ? 36 : 15) * s, maxH = (large ? 76 : 40) * s;
+  const minH = (large ? 36 : 15) * s, maxH = (large ? 84 : 40) * s;
   let shown = rows, more = 0;
   if (box.h / rows.length < minH) {
     const k = Math.max(1, Math.floor(box.h / minH) - 1);
@@ -333,17 +337,25 @@ function drawRows(x, T, s, rows, box, large) {
   const slots = shown.length + (more ? 1 : 0);
   const rowH = Math.min(maxH, box.h / slots);
   box = { ...box, y: box.y + (box.h - slots * rowH) / 2 };
-  const two = large && rowH >= 48 * s;
+  // A large row with room has three lines: the bar, the thin bar of small findings, and
+  // time and cost under them. With less room the lines under the bar go first.
+  const two = large && rowH >= 48 * s, three = large && rowH >= 62 * s;
   // A narrow panel (a phone) gives the names more room and the bars less.
   const narrow = box.w / s < 520;
-  const labelW = box.w * (large ? (narrow ? .4 : .3) : (narrow ? .42 : .36)), valueW = box.w * (large ? .22 : .2);
-  const barX = box.x + labelW, barW = box.w - labelW - valueW - 16 * s;
+  const labelW = box.w * (large ? (narrow ? .4 : .27) : (narrow ? .42 : .36));
   // Compact rows shrink their type with the row, so a panel can show every model.
   const fit = large ? 1 : Math.min(1, rowH / (22 * s));
   const nameSize = (large ? 16 : 14 * fit) * s, valueSize = (large ? 20 : 14 * fit) * s;
+  setFont(x, valueSize, 650);
+  const valueW = Math.max(...shown.map(r => x.measureText(r.value).width)) + 20 * s;
+  const barX = box.x + labelW, barW = box.w - labelW - valueW;
   shown.forEach((r, i) => {
     const mid = box.y + i * rowH + rowH / 2, colour = T.series[r.color];
-    const ny = two ? mid - 3 * s : mid + nameSize * .35;
+    const bh = Math.min((large ? 14 : 10) * s, rowH * .36);
+    const thin = r.small != null && rowH >= 30 * s;
+    // The block of bar, thin bar and line of text is centred in the row.
+    const blockH = bh + (thin ? 7 * s : 0) + (three ? 20 * s : 0), by = mid - blockH / 2;
+    const ny = two ? by + bh / 2 + nameSize * .35 : mid + nameSize * .35;
     x.fillStyle = colour; x.beginPath(); x.arc(box.x + 5 * s, ny - nameSize * .33, 5 * s, 0, Math.PI * 2); x.fill();
     setFont(x, nameSize, 650); x.fillStyle = T.text;
     const tagW = !two && r.tag ? (setFont(x, (large ? 14 : 12) * s, 400), x.measureText(r.tag).width + 6 * s) : 0;
@@ -352,20 +364,20 @@ function drawRows(x, T, s, rows, box, large) {
     x.fillText(name, box.x + 18 * s, ny);
     const nameW = x.measureText(name).width;
     setFont(x, (large ? 14 : 12) * s, 400); x.fillStyle = T.muted;
-    if (two) x.fillText(ellipsize(x, r.detail, labelW - 28 * s), box.x + 18 * s, mid + 17 * s);
+    if (two) x.fillText(ellipsize(x, r.detail, labelW - 28 * s), box.x + 18 * s, ny + 20 * s);
     else if (tagW) x.fillText(r.tag, box.x + 18 * s + nameW + 6 * s, ny);
-    const bh = Math.min((large ? 14 : 10) * s, rowH * .36);
-    const thin = r.small != null && rowH >= 30 * s, by = mid - bh / 2 - (thin ? 8 * s : 0);
     drawBlocks(x, T, r.segs, colour, barX, by, barW, bh);
     if (thin && r.small) {
       x.save(); x.globalAlpha = .35; x.fillStyle = colour;
       roundRect(x, barX, by + bh + 3 * s, barW * r.small / r.smallOf, 4 * s, 2 * s); x.fill(); x.restore();
     }
+    if (three && r.note) {
+      setFont(x, 12 * s, 400); x.fillStyle = T.muted;
+      x.fillText(ellipsize(x, r.note, barW), barX, by + blockH - 2 * s);
+    }
     x.textAlign = "right";
     setFont(x, valueSize, 650); x.fillStyle = T.text;
-    x.fillText(r.value, box.x + box.w, two ? mid - 1 * s : mid + valueSize * .35);
-    // The note may run under the end of the bar, which sits higher, so time and cost both fit.
-    if (two && r.note) { setFont(x, 12 * s, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.note, valueW + barW * .6), box.x + box.w, mid + (r.small != null ? 24 : 21) * s); }
+    x.fillText(r.value, box.x + box.w, (two ? by + bh / 2 : mid) + valueSize * .35);
     x.textAlign = "left";
   });
   if (more) {
@@ -387,8 +399,7 @@ const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.c
   : p.easy ? "too easy to tell apart"
   : `${plural(p.n, p.key.startsWith("write") ? "task" : "bug")}${p.runs === 1 ? "" : ` · ${p.runs} runs each`}`
     + (p.key.endsWith("-score") && p.rows.length > 1 && apartCount(p.key.split("-")[0]) ? ` · ${apartCount(p.key.split("-")[0])} told apart` : "")
-    + (p.close ? " · too close to call" : "")
-    + (p.rows.some(r => r.small != null) ? " · thin bars: small findings, not scored" : "");
+    + (p.close ? " · too close to call" : "");
 
 // What the page answers and how, above the results: the point is that the test
 // ran on this codebase, not on a general benchmark.
@@ -509,7 +520,6 @@ function panelEl(p, large, T) {
       bar.append(part);
     }
     const val = el("div", "val", r.value);
-    if (large && r.note) val.append(el("small", "", r.note));
     const bars = el("div", "bars"); bars.append(bar);
     if (r.small != null) {
       const thin = el("i", "smallbar");
@@ -517,6 +527,7 @@ function panelEl(p, large, T) {
       thin.title = `${r.small} real but small findings, not counted in the score`;
       bars.append(thin);
     }
+    if (large && r.note) bars.append(el("small", "", r.note));
     row.append(who, bars, val); rows.append(row);
   }
   box.append(head, rows);
@@ -566,7 +577,8 @@ function fitWindow() {
 
 // The image to share: a 1200 x 600 card at twice that resolution.
 function shareImage(cb) {
-  const c = document.createElement("canvas"), w = 1200, h = 600, dpr = 2;
+  const rows = (panelsOf().main || { rows: [] }).rows.length;
+  const c = document.createElement("canvas"), w = 1200, h = Math.min(960, 600 + Math.max(0, rows - 5) * 64), dpr = 2;
   c.width = w * dpr; c.height = h * dpr; c._dpr = dpr;
   drawDashboard(c, w, h, THEMES[themeName()]);
   c.toBlob(cb, "image/png");

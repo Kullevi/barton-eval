@@ -474,11 +474,9 @@ function drawDashboard(c, w, h, T) {
   // Credit, on one line at the foot.
   const footY = h - pad, link = "github.com/Kullevi/barton-eval";
   x.fillStyle = T.border; x.fillRect(pad, footY - 34, w - 2 * pad, 1);
-  // The credit on the left; what was tested, small, on the right.
   const credit = "RUN WITH BARTON-EVAL · BY KULLEVI · ";
   x.fillStyle = T.muted; setFont(x, 12, 600, .72); x.fillText(credit, pad, footY); const cw = x.measureText(credit).width;
   setFont(x, 14, 400); x.fillText(link, pad + cw, footY);
-  x.textAlign = "right"; x.fillText(ellipsize(x, "Tested on " + repoName(), w / 3), w - pad, footY); x.textAlign = "left";
 
   const bottom = footY - 50, full = w - 2 * pad;
   const mainW = P.side.length ? (full - gap) * .6 : full;
@@ -543,7 +541,7 @@ function render() {
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton-eval results · ${repoName()}`;
   const off = (DATA.excluded || []).length, few = DATA.partial || [];
-  $("meta").textContent = ""; $("proj").textContent = "Tested on " + repoName();
+  $("meta").textContent = ""; $("proj").textContent = "";
   // A public repository may be in a model's training data, which the details say.
   $("left").textContent = [DATA.public == null ? "" : DATA.public ? "A public repository: its code may have been in the models' training data." : "",
     off ? `${plural(off, "faulty task")} left off, listed at the end.` : "",
@@ -578,7 +576,7 @@ function fitWindow() {
 // The image to share: a 1200 x 600 card at twice that resolution.
 function shareImage(cb) {
   const rows = (panelsOf().main || { rows: [] }).rows.length;
-  const c = document.createElement("canvas"), w = 1200, h = Math.min(960, 600 + Math.max(0, rows - 5) * 64), dpr = 2;
+  const c = document.createElement("canvas"), w = 1200, h = Math.min(1200, Math.max(600, 306 + rows * 74)), dpr = 2;
   c.width = w * dpr; c.height = h * dpr; c._dpr = dpr;
   drawDashboard(c, w, h, THEMES[themeName()]);
   c.toBlob(cb, "image/png");

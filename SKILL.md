@@ -212,7 +212,9 @@ review labeled A, B, C in random order, with model names and folder paths
 removed. Give each bundle to a fresh judge that does not know which model wrote
 what and sees only that bundle: preferably the other vendor's CLI (for example
 `codex exec -s read-only "<instructions>"` when you are Claude), or otherwise a
-fresh subagent. Ask it, for each review separately, whether it identifies this
+fresh subagent. Use the strongest model you have for judges and for the
+helpers that check findings, at least as strong as the one running this
+session: a weak checker gives a weak list of bugs. Ask it, for each review separately, whether it identifies this
 bug: the wrong behaviour the later fix corrects, at the place of the bug or
 where it shows, in any words. A finding about something else does not count,
 and neither does a vague remark that would fit any change. Then record each

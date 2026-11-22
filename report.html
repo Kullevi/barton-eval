@@ -103,7 +103,7 @@ td small { display:block; color:var(--muted); }
   <summary>How this is measured</summary>
   <ol class="how">
     <li><b>The tasks.</b> Each is a real change from this project's history that held a bug, fixed in a later commit. The model reviews the change by reading the code as it was then. It cannot see what came after.</li>
-    <li><b>Found or missed.</b> A separate model judges each review without knowing which model wrote it. A bug is found only when the review names that wrong behaviour.</li>
+    <li><b>Found or missed.</b> A fresh model session<span id="judges"></span> judges each review without knowing which model wrote it. A bug is found only when the review names that wrong behaviour.</li>
     <li><b>Other bugs the reviews found.</b> Every finding is checked against the code. One that is real (the wrong behaviour can be shown from the code) and serious (a wrong result, lost data, a crash, a hang or a security hole in ordinary use) is added as one more bug, and every model is judged on it.</li>
     <li><b>Small findings.</b> Real but small findings, such as style, documentation, tests and rare corners, are counted beside each model and never change the score. A model cannot win by being picky.</li>
   </ol>
@@ -373,7 +373,7 @@ function intro(P) {
   return {
     headline: "AI models, tested on my own codebase",
     sub: ["Not a general benchmark.",
-      P.write ? "Each model redid real changes from this code's history, and the original tests decided whether it succeeded." : "Each model reviewed real changes from this code's history that held a serious bug, found and fixed later or confirmed in this test, and had to find it.",
+      P.write ? "Each model redid real changes from my code's history, and the original tests decided whether it succeeded." : "Each model reviewed real changes from my code's history that each held a serious bug. The score is how many of those bugs it found.",
       DATA.quick ? "A quick run, on few tasks." : ""].filter(Boolean).join(" "),
   };
 }
@@ -516,6 +516,8 @@ function render() {
     grid.append(panelEl(P.main, true, T));
     if (P.side.length) { const side = el("div", "side"); for (const p of P.side) side.append(panelEl(p, false, T)); grid.append(side); }
   }
+  const judges = [...new Set((DATA.results || []).map(r => r.judge_model).filter(Boolean))];
+  $("judges").textContent = judges.length ? ` (${judges.join(", ")})` : "";
   renderTable();
   fitWindow();
 }

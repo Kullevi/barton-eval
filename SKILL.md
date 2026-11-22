@@ -270,7 +270,12 @@ would hide results.
 
 ## 7. Show the result
 
-Run `barton report`. It opens a window of its own with a ready-made card: real
+Do not wait for the last model: as soon as the first model's reviews are judged,
+run `barton report` so the user has the window, and run it again after each
+further model is judged. The **Models** menu in the window lets the user choose
+which models and thinking levels are on the card; nothing is deleted for that.
+
+`barton report` opens a window of its own with a ready-made card: real
 bugs found per model and effort level, with findings per review, time and cost.
 A model that raises many findings per review finds more by raising more; say
 so when one model's count is far above the others'.

@@ -31,6 +31,11 @@ html, body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 va
 .seg button, .act { font:inherit; font-weight:600; border:0; background:none; color:var(--muted); padding:5px 12px; border-radius:6px; cursor:pointer; }
 .seg button[aria-pressed="true"] { background:var(--surface); color:var(--text); }
 .act { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px; }
+.pick { position:relative; }
+.pick summary { list-style:none; margin:0; width:auto; font-size:14px; text-transform:none; letter-spacing:0; padding:5px 12px; }
+.pick summary::-webkit-details-marker { display:none; }
+#picklist { position:absolute; right:0; top:calc(100% + 6px); z-index:5; min-width:300px; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+#picklist label { display:block; padding:4px 0; color:var(--text); white-space:nowrap; cursor:pointer; }
 .act.primary { background:var(--text); color:var(--surface); border-color:var(--text); }
 a { color:inherit; }
 a:hover { text-decoration:underline; }
@@ -93,6 +98,7 @@ td small { display:block; color:var(--muted); }
 <body>
 <div class="bar">
   <div class="brand"><svg viewBox="0 0 100 100" aria-hidden="true"><g fill="currentColor"><path d="M42,23.09 A30,30 0 1 0 58,23.09 L58,40 A8,8 0 0 1 42,40 Z" transform="translate(50 59) scale(.62) translate(-50 -52)"/><path d="M37,89 H11 V45 L50,9 L89,45 V89 H63" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></g></svg><b>Barton-eval</b><span id="meta"></span></div>
+  <details class="pick" id="pick" hidden><summary class="act">Models</summary><div id="picklist"></div></details>
   <span class="seg"><button id="hide" aria-pressed="false" title="Show 'My project' instead of the project name, and leave out task descriptions">Hide names</button></span>
   <span class="seg" id="theme" role="group" aria-label="Theme"><button data-v="light">Light</button><button data-v="dark">Dark</button></span>
   <button class="act primary" id="copy">Copy image</button>
@@ -108,6 +114,7 @@ td small { display:block; color:var(--muted); }
     <li><b>Found or missed.</b> A fresh model session<span id="judges"></span> judges each review without knowing which model wrote it. A bug is found only when the review names that wrong behaviour.</li>
     <li><b>Other bugs the reviews found.</b> Every finding is checked against the code. One that is real (the wrong behaviour can be shown from the code) and serious (a wrong result, lost data, a crash, a hang or a security hole in ordinary use) is added as one more bug, and every model is judged on it.</li>
     <li><b>Small findings.</b> Real but small findings, such as style, documentation, tests and rare corners, are counted beside each model and never change the score. A model cannot win by being picky.</li>
+    <li><b>Time and cost.</b> Time is the model's own working time, added over all reviews. Cost is what those tokens would cost at the vendor's API prices; on a subscription the same run uses plan quota instead and costs no extra money.</li>
   </ol>
 </details>
 <details class="below">
@@ -119,9 +126,9 @@ td small { display:block; color:var(--muted); }
 const DATA = /*BARTON_DATA*/null;
 const THEMES = {
   light: { page: "#f6f7f9", bg: "#ffffff", text: "#111418", muted: "#5d6673", border: "#e6e8ec", track: "#eef0f3", tie: "#c5cbd3", accent: "#0f9d6b",
-    series: ["#0f9d6b", "#3b6fe0", "#e0882b", "#8a5cf0", "#e0457b", "#1aa6b8", "#9aa3ad"] },
+    series: ["#0f9d6b", "#3b6fe0", "#e0882b", "#8a5cf0", "#e0457b", "#1aa6b8", "#9aa3ad", "#b5542a", "#5f8f1f", "#33415c"] },
   dark: { page: "#0d1014", bg: "#151a20", text: "#eef1f4", muted: "#8b95a3", border: "#252c35", track: "#1e242c", tie: "#46505c", accent: "#2fd08b",
-    series: ["#2fd08b", "#6b93f0", "#f0a352", "#a585f5", "#f06a95", "#3cc3d4", "#b4bcc5"] },
+    series: ["#2fd08b", "#6b93f0", "#f0a352", "#a585f5", "#f06a95", "#3cc3d4", "#b4bcc5", "#e08a62", "#9ccc52", "#8fa3c8"] },
 };
 const FONT = '"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif';
 const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max", "default"];
@@ -142,14 +149,19 @@ const themeName = () => storeGet("barton-theme", "light") === "dark" ? "dark" : 
 // One colour per setting (model, harness, effort), in order of first appearance, the
 // same on every card and in the table, so two efforts of one model are told apart.
 const settingKey = r => `${r.model}|${r.harness}|${r.effort || "default"}`;
+// The viewer chooses which models and thinking levels are compared; the choice is kept
+// per project. Everything that was run stays in the data.
+const offKey = () => "barton-off-" + DATA.repo;
+const offSet = () => new Set(storeGet(offKey(), "").split("\n").filter(Boolean));
+const shownRows = () => { const off = offSet(); return (DATA.results || []).filter(r => !off.has(settingKey(r))); };
 function modelColors() {
-  const order = [...new Set((DATA.results || []).map(settingKey))];
-  return k => Math.min(order.indexOf(k), 6);
+  const order = [...new Set(shownRows().map(settingKey))];
+  return k => Math.min(Math.max(order.indexOf(k), 0), 9);
 }
 
 // One row per model, harness and effort level.
 function settings(kind) {
-  const rows = (DATA.results || []).filter(r => r.kind === kind && !["error", "pending"].includes(r.outcome));
+  const rows = shownRows().filter(r => r.kind === kind && !["error", "pending"].includes(r.outcome));
   const map = new Map();
   for (const r of rows) {
     const effort = r.effort || "default";
@@ -185,7 +197,7 @@ const byRate = (a, b) => b.hits / b.n - a.hits / a.n || a.secs / a.runs - b.secs
 function costText(s) {
   if (!s.costKnown) return "cost unknown";
   // What the run would cost at the vendor's API price; on a subscription it uses plan quota instead.
-  return "API " + (s.costEst ? "≈" : "") + fmtUsd(s.cost / s.runs);
+  return (s.costEst ? "≈" : "") + fmtUsd(s.cost / s.runs) + " at API prices";
 }
 
 
@@ -343,7 +355,7 @@ function drawRows(x, T, s, rows, box, large) {
     if (two) x.fillText(ellipsize(x, r.detail, labelW - 28 * s), box.x + 18 * s, mid + 17 * s);
     else if (tagW) x.fillText(r.tag, box.x + 18 * s + nameW + 6 * s, ny);
     const bh = Math.min((large ? 14 : 10) * s, rowH * .36);
-    const thin = r.small != null && rowH >= 30 * s, by = mid - bh / 2 - (thin ? 6 * s : 0);
+    const thin = r.small != null && rowH >= 30 * s, by = mid - bh / 2 - (thin ? 8 * s : 0);
     drawBlocks(x, T, r.segs, colour, barX, by, barW, bh);
     if (thin && r.small) {
       x.save(); x.globalAlpha = .35; x.fillStyle = colour;
@@ -353,7 +365,7 @@ function drawRows(x, T, s, rows, box, large) {
     setFont(x, valueSize, 650); x.fillStyle = T.text;
     x.fillText(r.value, box.x + box.w, two ? mid - 1 * s : mid + valueSize * .35);
     // The note may run under the end of the bar, which sits higher, so time and cost both fit.
-    if (two && r.note) { setFont(x, 12 * s, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.note, valueW + barW * .6), box.x + box.w, mid + 21 * s); }
+    if (two && r.note) { setFont(x, 12 * s, 400); x.fillStyle = T.muted; x.fillText(ellipsize(x, r.note, valueW + barW * .6), box.x + box.w, mid + (r.small != null ? 24 : 21) * s); }
     x.textAlign = "left";
   });
   if (more) {
@@ -397,7 +409,7 @@ const titleOf = p => p.key === "write-quality" ? "Better solution when both pass
 // only when those shares differ, not when one setting's attempts disagree.
 function splitOf(taskId) {
   const by = new Map();
-  for (const r of DATA.results || []) {
+  for (const r of shownRows()) {
     if (r.task !== taskId || ["error", "pending"].includes(r.outcome)) continue;
     const k = `${r.model}|${r.harness}|${r.effort || ""}`, s = by.get(k) || [0, 0];
     s[0] += ["solved", "found"].includes(r.outcome) ? 1 : 0; s[1] += 1; by.set(k, s);
@@ -536,6 +548,7 @@ function render() {
   }
   const judges = [...new Set((DATA.results || []).map(r => r.judge_model).filter(Boolean))];
   $("judges").textContent = judges.length ? ` (${judges.join(", ")})` : "";
+  if (!$("pick").open) renderPick();
   renderTable();
   fitWindow();
 }
@@ -565,8 +578,25 @@ function save(blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// The list of everything that was run, each with a tick: on the cards or not.
+function renderPick() {
+  const all = [...new Set((DATA.results || []).map(settingKey))], off = offSet(), list = $("picklist");
+  $("pick").hidden = all.length < 2;
+  list.innerHTML = "";
+  for (const k of all.sort()) {
+    const [model, harness, effort] = k.split("|"), label = el("label"), box = el("input");
+    box.type = "checkbox"; box.checked = !off.has(k);
+    box.addEventListener("change", () => {
+      const now = offSet(); box.checked ? now.delete(k) : now.add(k);
+      storeSet(offKey(), [...now].join("\n")); render();
+    });
+    label.append(box, ` ${model} · ${effort} · ${HARNESS[harness] || harness}`);
+    list.append(label);
+  }
+}
+
 function renderTable() {
-  const res = DATA.results || [];
+  const res = shownRows();
   const color = modelColors(), T = THEMES[themeName()];
   const cols = [...new Set(res.map(settingKey))];
   const t = $("tasks"); t.innerHTML = "";

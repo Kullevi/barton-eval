@@ -387,12 +387,15 @@ class RepoTest(unittest.TestCase):
         self.assertIn("Merge pull request #1", subjects)
         self.assertNotIn("Add neg", subjects)
 
-    def test_review_without_file_goes_to_the_judge(self):
+    def test_a_reply_without_a_bug_list_is_not_a_miss(self):
+        # A model that refused, asked a question or stopped early did not do the review:
+        # the run is an error to look at and do again, never a score.
         task = {"plant": {"file": "a.py", "line": 3}}
         tmp = Path(self.tmp.name)
-        self.assertEqual(barton.grade_review(task, tmp, tmp)["outcome"], "missed")
-        g = barton.grade_review(task, tmp, tmp, "Line 3 of a.py flips the bound.")
-        self.assertEqual((g["outcome"], g["method"]), ("pending", "judge"))
+        self.assertEqual(barton.grade_review(task, tmp, tmp)["outcome"], "error")
+        g = barton.grade_review(task, tmp, tmp, "Before I do any work, I have to flag this.")
+        self.assertEqual(g["outcome"], "error")
+        self.assertIn("final.txt", g["error"])
 
     def _results(self, rows):
         b = barton.Barton(self.repo)

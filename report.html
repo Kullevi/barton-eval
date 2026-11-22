@@ -150,8 +150,6 @@ const themeName = () => storeGet("barton-theme", "light") === "dark" ? "dark" : 
 
 // ---- Data --------------------------------------------------------------
 
-// One colour per setting (model, harness, effort), in order of first appearance, the
-// same on every card and in the table, so two efforts of one model are told apart.
 const settingKey = r => `${r.model}|${r.harness}|${r.effort || "default"}`;
 // The viewer chooses which models and thinking levels are compared; the choice is kept
 // per project. Everything that was run stays in the data.
@@ -160,8 +158,10 @@ const offSet = () => new Set(storeGet(offKey(), "").split("\n").filter(Boolean))
 const shownRows = () => { const off = offSet(); return (DATA.results || []).filter(r => !off.has(settingKey(r))); };
 const waitingKeys = () => new Set(shownRows().filter(r => r.outcome === "pending").map(settingKey));
 function modelColors() {
-  const order = [...new Set(shownRows().map(settingKey))];
-  return k => Math.min(Math.max(order.indexOf(k), 0), 9);
+  // One colour per model: its thinking levels share it, and the row says which is which.
+  const model = k => k.split("|").slice(0, 2).join("|");
+  const order = [...new Set(shownRows().map(settingKey).map(model))];
+  return k => Math.min(Math.max(order.indexOf(model(k)), 0), 9);
 }
 
 // One row per model, harness and effort level.

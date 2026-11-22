@@ -546,13 +546,13 @@ function render() {
   $("hide").textContent = hidden() ? "Names hidden" : "Hide names";
   if (!DATA) { $("meta").textContent = "No data. Run barton report to build this page."; return; }
   document.title = `Barton-eval results · ${repoName()}`;
-  const off = (DATA.excluded || []).length, few = DATA.partial || [];
-  const wait = waitingKeys().size;
-  $("meta").textContent = wait ? `${wait} more ${wait === 1 ? "is" : "are"} being judged and will appear when done` : ""; $("proj").textContent = "";
+  const off = (DATA.excluded || []).length, few = DATA.waiting || [];
+  $("meta").textContent = few.length ? `${few.length} more not done yet, listed under Task by task` : ""; $("proj").textContent = "";
   // A public repository may be in a model's training data, which the details say.
   $("left").textContent = [DATA.public == null ? "" : DATA.public ? "A public repository: its code may have been in the models' training data." : "",
     off ? `${plural(off, "faulty task")} left off, listed at the end.` : "",
-    few.length ? `Not on the cards yet, too few results: ${few.map(p => p.setting.split("|").filter((v, i) => i !== 1).join(" ") + ` (${p.tasks})`).join(", ")}.` : "",
+    few.length ? `Not done yet, so not shown: ${few.map(p => p.setting.split("|").filter((v, i) => i !== 1).join(" ") + " (" +
+      [p.to_run ? `${p.to_run} to run` : "", p.to_judge ? `${p.to_judge} to judge` : "", p.to_check ? `${p.to_check} with findings to check` : ""].filter(Boolean).join(", ") + ")").join("; ")}.` : "",
   ].filter(Boolean).join(" ");
   const P = panelsOf(), I = intro(P), grid = $("grid");
   $("headline").textContent = P.main ? I.headline : "No scored runs yet";

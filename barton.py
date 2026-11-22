@@ -1885,32 +1885,42 @@ def cmd_report(args) -> None:
                 if t["id"] in ids and t.get("excluded")]
     ids -= {e["id"] for e in excluded}
     rows = [r for r in current_rows(b) if r["task"] in ids]
-    # Every model is compared on the same tasks: a task some model has no result for
-    # (not run yet, or an error to fix) is left off the cards until it does.
-    done: dict[str, set] = {}
+    # The tasks in play: those some model has a result for. One nobody has run yet is not
+    # part of the comparison.
+    ran = {r["task"] for r in rows if r["outcome"] != "error"}
+    tasks = [t for t in cfg.get("tasks", []) if t["id"] in ids and t["id"] in ran]
+    # A model is on the page only when it is wholly done: run on every task, every review
+    # judged, and its findings checked for small ones. A half-done model would show a
+    # score nobody can compare, so it is named with what it still lacks instead.
+    by: dict[str, dict[str, dict]] = {}
     for r in rows:
-        if r["outcome"] != "error":
-            done.setdefault(setting(r), set()).add(r["task"])
-    # A setting with results for under half the tasks of the most complete one (a run
-    # stopped early, a model tried on a few tasks) is left off and named, so it does
-    # not shrink every other model's comparison to the few tasks it reached.
-    most = max((len(v) for v in done.values()), default=0)
-    partial = sorted(s for s, v in done.items() if len(v) * 2 < most)
-    partial_done = {s: done.pop(s) for s in partial}
-    rows = [r for r in rows if setting(r) not in partial]
-    shared = set.intersection(*done.values()) if done else set()
-    left_out = sorted({r["task"] for r in rows} - shared)
-    tasks = [t for t in cfg.get("tasks", []) if t["id"] in shared]
+        by.setdefault(setting(r), {})[r["task"]] = r
+    checked = any("small" in r for r in rows)  # the findings step has been done here at all
+    waiting = []
+    for s_, got in sorted(by.items()):
+        lack = {"to_run": 0, "to_judge": 0, "to_check": 0}
+        for t in tasks:
+            r = got.get(t["id"])
+            own = not (t.get("plant") or {}).get("of")  # a found bug is judged from its change's review
+            if r is None or r["outcome"] == "error":
+                lack["to_run"] += own
+            elif r["outcome"] == "pending":
+                lack["to_judge"] += 1
+            elif checked and own and t["kind"] == "review" and "small" not in r:
+                lack["to_check"] += 1
+        if any(lack.values()):
+            waiting.append({"setting": s_, **{k: v for k, v in lack.items() if v}})
+    off = {w["setting"] for w in waiting}
+    rows = [r for r in rows if setting(r) not in off]
     data = {"repo": cfg.get("name") or b.repo.name, "generated": now(), "barton": VERSION,
-            "public": cfg.get("public"), "quick": bool(args.quick), "left_out": left_out,
-            "excluded": excluded,
+            "public": cfg.get("public"), "quick": bool(args.quick),
+            "excluded": excluded, "waiting": waiting,
             "tasks": [{k: t.get(k) for k in ("id", "kind", "source", "prompt")}
                       | {"check": bool(t.get("check"))} for t in tasks],
-            "results": [r for r in rows if r["task"] in shared],
-            "partial": [{"setting": s, "tasks": len(v)} for s, v in partial_done.items()],
-            "quality": [q for q in quality(b) if q.get("task") in shared
-                        and q["a"] not in partial and q["b"] not in partial],
-            "quality_judges": sorted({p["judge_model"] for p in b.prefs() if p["task"] in shared})}
+            "results": rows,
+            "quality": [q for q in quality(b) if q.get("task") in ids
+                        and q["a"] not in off and q["b"] not in off],
+            "quality_judges": sorted({p["judge_model"] for p in b.prefs() if p["task"] in ids})}
     tpl = (HERE / "report.html").read_text(encoding="utf-8")
     blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     page = tpl.replace("/*BARTON_DATA*/null", blob)
@@ -1919,12 +1929,10 @@ def cmd_report(args) -> None:
     dest.write_text(page, encoding="utf-8")
     if not args.no_open:
         open_window(dest.as_uri())
-    out({"report": str(dest), "tasks": len(tasks),
-         **({"partial": data["partial"], "partial_note": "Too few results to compare yet, so "
-             "left off the cards; run their remaining tasks to include them."} if partial else {}),
-         **({"left_out": left_out, "note": "Left out because not every model has a result for "
-             "them yet; run what is missing and make the report again."} if left_out else {})})
-
+    out({"report": str(dest), "tasks": len(tasks), "models": len(by) - len(waiting),
+         **({"waiting": waiting, "note": "Not on the page until wholly done: run what is left, "
+             "judge it, check the findings (`barton findings`, `barton small`), and make the "
+             "report again."} if waiting else {})})
 
 def cmd_quick(args) -> None:
     """Choose the quick set: a few tasks that ran fast and still told the models apart.

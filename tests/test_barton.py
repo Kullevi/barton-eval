@@ -415,18 +415,17 @@ class RepoTest(unittest.TestCase):
         self.assertEqual(call("quick", "--repo", str(self.repo), "--coding", "3", "--reviews", "0")["quick"],
                          ["c", "a", "d"])
 
-    def test_report_compares_models_on_the_same_tasks_only(self):
-        self._results([("a", "m1", "solved", 1), ("a", "m2", "failed", 1), ("b", "m1", "solved", 1)])
+    def test_a_model_is_on_the_page_only_when_wholly_done(self):
+        # m2 has not run b, m3 has a review waiting for the judge: neither has a score
+        # that can be compared, so neither is shown, and each is named with what it lacks.
+        b = self._results([("a", "m1", "solved", 1), ("b", "m1", "solved", 1), ("a", "m2", "failed", 1),
+                           ("a", "m3", "solved", 1), ("b", "m3", "pending", 1)])
         d = call("report", "--repo", str(self.repo), "--no-open")
-        self.assertEqual((d["tasks"], d["left_out"]), (1, ["b"]))  # m2 has not run b yet
-
-    def test_a_setting_with_few_results_is_left_off_rather_than_shrinking_the_rest(self):
-        self._results([(t, m, "solved", 1) for t in "abcd" for m in ("m1", "m2")]
-                      + [("a", "m3", "failed", 1)])  # m3 was stopped after one task
-        d = call("report", "--repo", str(self.repo), "--no-open")
-        self.assertEqual((d["tasks"], [p["setting"] for p in d["partial"]]),
-                         (4, ["m3|claude|default"]))
+        self.assertEqual((d["tasks"], d["models"]), (2, 1))
+        self.assertEqual(d["waiting"], [{"setting": "m2|claude|default", "to_run": 1},
+                                        {"setting": "m3|claude|default", "to_judge": 1}])
         page = Path(d["report"]).read_text(encoding="utf-8")
+        self.assertNotIn('"model": "m2"', page)
         self.assertNotIn('"model": "m3"', page)
 
     def test_an_excluded_task_is_left_off_the_cards_with_its_reason(self):
@@ -435,7 +434,7 @@ class RepoTest(unittest.TestCase):
         why = "the check wants an issue code the prompt never names"
         call("exclude", "--repo", str(self.repo), "b", "--reason", why)
         d = call("report", "--repo", str(self.repo), "--no-open")
-        self.assertEqual((d["tasks"], d.get("left_out")), (1, None))
+        self.assertEqual((d["tasks"], d.get("waiting")), (1, None))
         page = Path(d["report"]).read_text(encoding="utf-8")
         self.assertIn(why, page)
         self.assertNotIn("b", call("quick", "--repo", str(self.repo), "--reviews", "0")["quick"])

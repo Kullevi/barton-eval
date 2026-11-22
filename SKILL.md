@@ -270,10 +270,13 @@ would hide results.
 
 ## 7. Show the result
 
-Do not wait for the last model: as soon as the first model's reviews are judged,
-run `barton report` so the user has the window, and run it again after each
-further model is judged. The **Models** menu in the window lets the user choose
-which models and thinking levels are on the card; nothing is deleted for that.
+A model is on the page only when it is wholly done: run on every task, every
+review judged, and its findings checked (`barton findings`, `barton small`).
+`barton report` names the models that are not done and what each still lacks.
+Finish one model at a time when the user is waiting, so the window can open
+with the first one and gain a row as each further one is done. The **Models**
+menu in the window lets the user choose which models and thinking levels are
+on the card; nothing is deleted for that.
 
 `barton report` opens a window of its own with a ready-made card: real
 bugs found per model and effort level, with findings per review, time and cost.

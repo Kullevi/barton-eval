@@ -13,7 +13,7 @@ setup recorded; run every command from the root of the repository under test
 (or pass `--repo`). Every command prints JSON.
 
 The point of a Barton run is that the result is about **this** codebase. A run
-is small (a handful of tasks), so be honest about what it shows, and never
+is small (about ten tasks), so be honest about what it shows, and never
 dress it up as a general benchmark.
 
 ## 1. Check what is installed (silently)
@@ -65,53 +65,47 @@ terminal. Offer to show it later; do not do it now.
 
 ## 2. Propose the run in one short message
 
-People want to post about a new model soon after it comes out, so time matters.
-There are two kinds of run:
+People want to post about a new model soon after it comes out, so a run is
+quick. Each model reviews real changes from this project's history, each of
+which held a bug the project found and fixed later, and has to find that bug.
+Models only read code, so nothing is installed or built, and a model's whole
+run takes minutes.
 
-- **Quick, under 30 minutes:** only the new model, on the quick set (about 8
-  coding tasks and 4 reviews that ran fast and still told models apart), against
-  the results already stored for the user's usual models. Possible once a task
-  set exists and those models have run it.
-- **Full, a couple of hours:** about 20 coding tasks and 6 reviews or more,
-  larger tasks, every model, and up to 3 attempts for a steadier result. The
-  quick set is part of it, so a full run after a quick one only adds what is
-  missing; the user can post the quick card first and the full one later.
+**Coding tasks are coming soon.** A second, deeper kind of run, where each model
+redoes real changes and the project's own tests decide, is switched off in this
+version: `barton task-add` and `barton run` refuse coding tasks. Do not offer
+it; if the user asks, say it is coming.
 
-**Prepare ahead.** Choosing, checking and planting tasks takes longer than the
-runs. Right after setup, and whenever there is no task set yet, offer to build
-it and run the user's usual models now, so that on the day a model comes out
-only the new model has to run. If `barton status` shows the newest task was
-added long ago (`task_set.days_since` of 60 or more, or the new model was
-trained on newer code than the tasks), suggest refreshing it in one sentence:
-add tasks from recent history, which also keeps a public repo's tasks newer
-than what the models trained on. Old tasks stay; refreshing only adds.
+**Prepare ahead.** Choosing and checking tasks takes longer than the runs. Right
+after setup, and whenever there is no task set yet, offer to build it and run
+the user's usual models now, so that on the day a model comes out only the new
+model has to run. If `barton status` shows the newest task was added long ago
+(`task_set.days_since` of 60 or more, or the new model was trained on newer code
+than the tasks), suggest refreshing it in one sentence: add tasks from recent
+history, which also keeps a public repo's tasks newer than what the models
+trained on. Old tasks stay; refreshing only adds.
 
 Decide a sensible plan and state it in a few lines, then start unless the user
-changes something. Default when a new model is out and a task set exists: a
-quick run. Otherwise: the new model against the model the user normally uses,
-each at its default effort, one attempt, about 10 coding tasks and 5 review
-tasks. Never fewer than 5 of each unless the history does not have them; then
-say so. Mention roughly how long it takes and, in passing, about what it costs;
-do not demand approval for the cost. The user may change, in their own words:
+changes something. Default: the new model against the model the user normally
+uses, each at its default effort, one attempt, about 15 review tasks, never
+fewer than 8 unless the history does not have them; then say so. Mention roughly
+how long it takes and, in passing, about what it costs; do not demand approval
+for the cost. The user may change, in their own words:
 
 - which models and which effort/thinking levels (Claude: `low`, `medium`,
   `high`, `xhigh`, `max`; Codex: `low`, `medium`, `high`, `xhigh`),
 - how many attempts per level (more attempts give a fairer picture),
-- coding tasks, review tasks or both, and how many.
-
-Presets you can offer by name: **quick** (the quick set, the new model only),
-**standard** (10 coding and 5 review tasks, 1 attempt), **full** (20 and 6 or
-more, up to 3 attempts).
+- how many tasks.
 
 ## 3. Prepare the project (once)
 
-Look at the repository yourself and decide how its code and tests run.
+**No history, no run.** Barton's tasks are real bugs from the project's history.
+If the folder has no git history (`barton mine` says so), or the history holds
+no fixes yet, tell the user plainly, and offer to start saving history now:
+`git init`, a `.gitignore` that fits the project, and a first commit, then a
+commit whenever a piece of work is done. After a few weeks of work there are
+bugs and fixes to test on. Do not invent tasks to get a result on the first day.
 
-- If the project needs installed packages to run its tests, set them up:
-  `barton config --setup "<install command>"`. It runs once per task commit,
-  and each run gets a copy. Prefer it to `--link`: a linked folder is the
-  user's own, so a model that installs packages in a task would change it. Untracked files the code needs, such as `.env`, go in
-  `barton config --copy .env` (copied into task folders only, never committed).
 - `barton config --public yes|no`: always set it, so the results page says it.
   Check the git remote; ask only if you cannot tell. Public code may have been in a model's
   training data, and the card says so.
@@ -120,67 +114,40 @@ Look at the repository yourself and decide how its code and tests run.
 
 ## 4. Choose tasks
 
-Run `barton mine`. It lists commits that changed code, grouped as `small`,
-`medium` and `large` by how much code they changed, newest and those with tests
-first. **Choose hard tasks**: mostly large and medium, few small. Current
-models solve nearly every small task, and a run where every model gets full
-marks tells the user nothing. Aim for tasks the best model may fail: bug fixes
-whose cause is not obvious from the description, behaviour changes touching
-several functions or files, and edge cases the tests pin down. A good run has
-the best model solving roughly half to four fifths of the tasks. For each task you keep, write a JSON file and
-run `barton task-add <file>`:
+A task is a real bug: a change that introduced something a later commit had to
+fix. The reviewing model gets the introducing change exactly as it was made,
+with the author's own commit message, and must find the bug. It got past
+whoever reviewed the change at the time, so it is hard in the way this
+codebase's bugs are hard.
 
-```json
-{"id": "t1", "kind": "write", "base": "<sha>^", "reference": "<sha>",
- "prompt": "<the task, in plain words>",
- "check": {"command": "<test command>", "files": ["<test files from the commit>"],
-           "env": {"PYTHONPATH": "src"}, "method": "tests"}}
-```
+Find the fixes yourself: read the history (`git log`, in any language the
+project writes its messages in) for commits that repair earlier work. A fix
+inside a merged branch works as well as one on the main line. For each one:
 
-Rules for a good task:
+`barton bug <id> <fix commit>`
 
-- **The prompt** describes what to achieve as a user or issue would, not how the
-  author did it. Never paste or paraphrase the solution. If the tests depend on
-  an exact name, signature, message or file, state it in the prompt; otherwise
-  a correct solution fails for a guessed name.
-- **The check**, best first:
-  1. the project's own tests that the commit added or changed (`files` lists
-     them; they are hidden from the model and added only when checking;
-     `method: "tests"`);
-  2. if there are none, write a small check yourself from the original change
-     and put it inline: `"write": {"<path>": "<file content>"}`,
-     `method: "check"`;
-  3. if the code cannot run at all, leave out `check`: the solution is judged
-     blind (step 6).
-- Run `barton validate <id>` for every task with a check. It must fail before
-  the change and pass twice with it. Drop tasks that fail validation and say how
-  many you dropped.
-- **Check that the task is fair before any model runs it.** Run
-  `barton fairness <id>` and give the bundle to a fresh judge: it holds the
-  prompt and what the hidden tests assert. Every exact name, code, message,
-  value or format the tests assert must be stated in the prompt or follow from
-  it with one reasonable reading. If the judge finds one that does not, sharpen
-  the prompt (`task-add` again) and ask again. A test that wants something the
-  prompt leaves open fails every model for the task's fault, and the card then
-  measures nothing.
-- Prefer tasks from different parts of the code, of the kind the user actually
-  does. If the history has too few usable commits (common: "fix stuff" commits
-  touching many files), write realistic tasks from the current code instead
-  (`"base": "HEAD"`, no `reference`, no `check`), judged blind.
+Barton traces the lines the fix changed back to the commit that wrote them, and
+prints that commit (`introduced_by`), its size, and `where` in it the bug is.
+It refuses a fix whose lines come from many earlier changes, and one whose
+introducing change is too large to review (`--max-lines`, default 1500).
 
-**Review tasks**: `barton plant <id> <sha> --check "<test command>" [--env NAME=VALUE]`
-(the same environment as the coding checks, such as `--env PYTHONPATH=src`) takes a
-real commit and plants one mechanical bug in its new code (a flipped
-condition, an off-by-one, a swapped `and`/`or`). With `--check` it keeps only a
-bug that makes the project's tests fail, so it is surely a real bug; small
-commits often have no place for one, so try commits with more logic. Without
-tests, leave out `--check` and look at what it planted yourself: if the change
-is harmless or in dead code, run it again with `--seed <n>`. A reviewing model
-gets the commit and must find the planted bug; the answer key is fixed, so
-results stay comparable.
+**You decide whether the pair is a fair task.** Read the fix and the
+introducing change (`git show` each) and keep the task only if:
 
-A task is frozen once any model has run it: `task-add` and `plant` refuse to
-change it. Use a new id instead.
+- the code was already wrong when the introducing change was made. A fix that
+  is a change of mind, a new requirement, or a repair of something a still
+  later change broke is not a bug in that change;
+- a careful reviewer could have seen it from the change and the code around
+  it, without knowing what only showed later (a provider's behaviour, a
+  customer's data);
+- the introducing change is not itself mostly this one bug: a ten-line change
+  whose only content is the bug is too plain.
+
+Drop the others with `barton task-remove <id>` before any model runs, and say
+how many you dropped. Prefer bugs from different parts of the code, and one
+task per introducing change. A good run has the best model finding roughly a
+third to two thirds of the bugs. A task is frozen once any model has run it:
+`barton bug` refuses to change it. Use a new id instead.
 
 ## 5. Run
 
@@ -195,89 +162,67 @@ level (`gemini-4-argon-medium`); give Barton the model and the level apart,
 no switch to turn off web search, so Barton counts the model's web and browser
 calls and records them as `web_used`; mention it if any run used the web.
 
-For a quick run, run the quick set (`barton quick` chooses it once the usual
-models have results; run it again after adding tasks) with every task at once
-and a budget, and keep its cards apart:
-
-`barton run quick --harness … --model … --jobs 12 --timeout 1200 --budget 25`,
-then `barton report --quick`, whose cards say "quick run".
-
 It runs every task of that model at once (up to 8; `--jobs <n>` changes it,
 lower it if the provider reports rate limits) and prints one result per task as
 it finishes, then a summary. Instead of `all` you can name task ids. Each run
 works in a fresh copy of the code at the task's commit, outside the user's
 repository and with no later history, with web access off, and the copy is
-deleted when the run ends. Read only the results Barton prints, not the model's
+deleted when the run ends. A review may only read, and only in that copy: the
+project as it is today, elsewhere on the computer, holds the answer. Claude gets
+its file-reading tools alone; agy is refused every command; codex keeps a shell
+in a read-only sandbox, because it reads files through commands. A run that
+read outside its copy is recorded as an `error` saying so, not as a score. Read only the results Barton prints, not the model's
 output files, so your own context stays small. A run already recorded is skipped, so
 "continue barton" means: run `barton status` and run what is missing.
 
 An `error` outcome is not a score: it means the run could not happen (login,
-model name, limits, sandbox). Fix the cause and run it again with `--again`.
+model name, limits, sandbox) or broke the rules of a review. Fix the cause and
+run it again with `--again`; a model that read outside its copy gets one more
+try, and if it does so again, leave that task out for it and tell the user.
 If codex's sandbox cannot start on Linux, tell the user in one sentence that
 codex will run without it, in the throwaway task copy, then set
 `barton config --codex-sandbox off`.
 
-## 6. Judge what has no check
+## 6. Judge the reviews
 
-For tasks with outcome `pending`, run `barton blind <task>`. It writes an
-anonymous bundle with the task, the original author's change as a reference,
-and every solution labeled A, B, C in random order, with model names and
-folder paths removed. Reviews also end up here when a model's reply ends without
-a JSON bug list; then the bundle holds
-the answer key and each review, and the judge decides `found` or `missed`. Give the bundle to a judge
-that does not know which model wrote what: preferably the other vendor's CLI
-(for example `codex exec -s read-only "<instructions>"` when you are Claude), or
-otherwise a fresh subagent. Ask it, for each solution separately, whether it
-fully does what the task asks and would work, judging each on its own merits
-and not by how close it is to the reference, which is only one valid way. Then
-record each verdict:
+A review with no findings has missed the bug. Every other review goes to a
+blind judge: where the fix landed tells where the bug is, but a review with
+several findings often has one near there about something else, so only a
+reader can say whether the review names this bug. Their outcome is `pending`
+until then.
 
-`barton verdict <task> <label> solved|failed|found|missed --judge-model <judge model> --note "<one sentence>"`
+For every task, run `barton blind <task>`. It writes an anonymous bundle with
+the answer key (where the bug is, and the later fix with its message) and each
+review labeled A, B, C in random order, with model names and folder paths
+removed. Give each bundle to a fresh judge that does not know which model wrote
+what and sees only that bundle: preferably the other vendor's CLI (for example
+`codex exec -s read-only "<instructions>"` when you are Claude), or otherwise a
+fresh subagent. Ask it, for each review separately, whether it identifies this
+bug: the wrong behaviour the later fix corrects, at the place of the bug or
+where it shows, in any words. A finding about something else does not count,
+and neither does a vague remark that would fit any change. Then record each
+verdict:
 
-**Quality when both passed.** Tests say only pass or fail. For every coding
-task that two or more settings solved, run `barton pairs <task>`: it writes one
-blind A/B bundle per pair of solutions, each pair in both orders. Judge **each
-bundle with a fresh judge that sees only that bundle** (a new subagent or a new
-`codex exec` per bundle; a judge that sees several bundles compares across them
-and is no longer independent). Record each answer:
+`barton verdict <task> <label> found|missed --judge-model <judge model> --note "<one sentence>"`
 
-`barton prefer <pair> first|second|tie --judge-model <judge model> --note "<one sentence>"`
+**A bug no model found.** Before showing the result, read again every task no
+setting found, against the three conditions in step 4. If the task is not a
+fair one after all, take it off the card with
+`barton exclude <id> --reason "<one sentence>"`; the page still lists it with
+the reason. Never exclude a fair task because it is hard: a bug every model
+misses is a real result.
 
-A win counts only when both orders agree; otherwise it is a tie, which cancels
-the judge's habit of favouring the first or the second answer.
-
-**A task no setting solved.** Before showing the result, run
-`barton fairness <id>` for every coding task with a check that every setting failed; the
-bundle now also holds how the solutions failed. Give it to a fresh judge. If the
-tests require something the prompt leaves open or contradicts, the task is
-faulty: it is frozen once run, so take it off the cards with
-`barton exclude <id> --reason "<the judge's sentence>"`; the page still lists it
-with the reason. Never exclude a fair task because it is hard; a task every
-model fails for the models' own fault is a real result. Tell the user how many
-you excluded and why.
-
-**Judges.** `barton status` shows how often each pairwise judge picked the first
-or the second solution. A judge that picks one position most of the time (its
-`note` says so) turns most answers into ties; say so when you show the quality
-card. A win needs every judge to agree, so a weak judge's answers keep a
-stronger judge's wins at ties: remove them with `barton forget-judge <model>`,
-then run `barton pairs` again and judge with the stronger one.
-
-**Too easy?** If the best setting solved 90 % or more of the coding tasks, or
-every model found every planted bug, the run cannot tell the models apart. Before
-you show the result, add harder tasks (larger commits, bug fixes, changes
-across several files; for reviews, commits with more logic) and run every model
-on them, until the best setting is clearly below full marks. Tasks already run
-stay: they are frozen, and removing them would hide results. If the history has
-nothing harder (`barton mine` finds no medium or large commits), say so, show
-the result as it is, and offer once to write a few harder tasks yourself
-(`base: HEAD`, judged blind).
+**Too easy, or too hard?** If every model found nearly every bug, or none found
+any, the run cannot tell the models apart. Add tasks from other fixes and run
+every model on them. Tasks already run stay: they are frozen, and removing them
+would hide results.
 
 ## 7. Show the result
 
-Run `barton report`. It opens a window of its own with ready-made cards:
-tasks solved, better solution when both passed, planted bugs found, time and
-cost per model and effort level.
+Run `barton report`. It opens a window of its own with a ready-made card: real
+bugs found per model and effort level, with findings per review, time and cost.
+A model that raises many findings per review finds more by raising more; say
+so when one model's count is far above the others'.
 Tell the user in a few sentences what the result says about *their* code,
 including where models differed and how many tasks told them apart (the table
 marks each task: every setting made it, told settings apart, or no setting made

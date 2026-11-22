@@ -1,13 +1,13 @@
 # <img src="logo.svg" width="40" align="top" alt=""> Barton-eval
 
 **Test a new AI model on your own code, the day it comes out.** Barton takes
-real changes from your project's history, has the new model redo them in a
-clean copy of your code, checks the work with your own tests, and compares it
-with the models you use today. You get cards you can share: how many of your
-tasks each model solved, whose solution was better when both worked, how many
-planted bugs it caught in code review, and what it took in time and money.
+real bugs from your project's history, the kind that got past review and had to
+be fixed later, and asks every model to review the change that introduced each
+one. Did it find the bug? A model's whole run takes minutes, and you get a card
+you can share: how many of your own bugs each model found, and what it took in
+time and money.
 
-![The Barton results page from a real run on the open-source click library: Gemini 4 Argon, Claude Opus 5.5, GPT-6.2 Sol and GPT-6.1 Sol on 18 coding tasks and 5 reviews](docs/report.png)
+![The Barton results page from a real run on the open-source click library: GPT-6.2 Sol at two effort levels, Claude Opus 5.5 and Claude Haiku 5.5 reviewing 11 changes that each held a real bug](docs/report.png)
 
 **To get started, give the link to this page to Claude or Codex and ask it to
 set up Barton for you.** Then say something like *"test GPT-6.2 Sol on my
@@ -32,46 +32,52 @@ switching?
 At [Kullevi](https://kullevi.com) we build our product with many Claude Code
 and Codex sessions working in parallel, so we ask that question often. We
 answered it the slow way, by trying a new model for a few days and arguing
-about how it felt. Barton is the quick way: an hour or so on your own history,
-judged by your own tests, with the result kept so the next model is compared
-on exactly the same tasks.
+about how it felt. Barton is the quick way: minutes per model on your own
+history, with the result kept so the next model is compared on exactly the
+same tasks.
 
 ## What you get
 
-- **Coding tasks** taken from your own commits. The model gets the task in
-  plain words, works in a fresh copy of your code as it was before that
-  commit, and your own tests decide whether it worked. The tests are hidden
-  from the model while it works.
-- **Better solution when both passed.** Tests only say pass or fail. When two
-  models both solved a task, a blind AI judge compares the two solutions, in
-  both orders, and a win counts only when both orders agree.
-- **Code review**: a real recent change from your project with one bug planted
-  in it. Did the model find it?
-- **Time and cost** per model and thinking level.
-- **An image to share**, landscape (2:1 by default, following your window)
-  and sharp, light or dark, ready to paste into a post. **Hide names**
-  shows "My project" instead of the project name and leaves out task
-  descriptions, for a card or screenshot you share.
-  Each card prints the number of tasks, how many of them told the models apart,
-  how they were judged and by whom, and says so plainly when the models were
-  too close to call or the tasks too easy.
+- **Code review on your own real bugs.** Each task is a change from your
+  history that held a bug you found and fixed later. The model gets the change
+  exactly as it was made, with its commit message, and has to find the bug.
+  These bugs got past whoever reviewed the change at the time, so they are as
+  hard as your codebase's own bugs are, and no model invented them.
+- **Quick.** Models only read code and write a review, so nothing is installed
+  or built, and a model's whole run takes minutes.
+- **Time, cost and findings per review** for each model and thinking level. A
+  model that raises six findings on every change finds more than one that
+  raises one, so the count stands beside the score.
+- **An image to share**, landscape and sharp, light or dark, ready to paste
+  into a post. **Hide names** shows "My project" instead of the project name
+  and leaves out task descriptions, for a card or screenshot you share. The
+  card prints the number of tasks and how many of them told the models apart,
+  and says so plainly when the models were too close to call or the tasks too
+  easy.
 - **History.** Results stay in your project (`.barton/`, never committed), so a
   model you test next month is compared on exactly the same tasks.
+- **Coming soon: coding tasks.** A deeper run where each model redoes real
+  changes and your own tests decide whether its code works. It takes hours on a
+  large project, so it will be an option beside the quick review run. It is
+  switched off in this version.
 
 <img src="docs/card.png" width="600" alt="The share image from the same run, in dark mode">
 
-*The share image from the same run, in dark mode. 15 against 13 solved can be
-chance on 18 tasks, so the card says "too close to call". Where two models both
-passed, blind judges from OpenAI and Anthropic, agreeing in both orders, preferred
-GPT-6.2 Sol's solution most often and Gemini's least. Every model found all five
-planted bugs, so the card marks the reviews as too easy to tell apart.*
+*The share image from a run on the open-source
+[click](https://github.com/pallets/click) library, in dark mode. Eleven changes
+from click's history each held a bug its maintainers fixed later, from a pager
+file left open in 2014 to a flag value instantiated by mistake in 2025. No
+model found more than six. Six against five can be chance on eleven tasks, so
+the card says "too close to call"; three tasks told the models apart. GPT-6.2
+Sol found the most and also raised the most findings per review, which is why
+that count is on the card.*
 
 ## Who does what
 
 | Who | What |
 |---|---|
-| **Barton** | Small scripts: finds candidate tasks in your git history, builds clean copies of your code, runs a model, checks the result, makes the page and cards. |
-| **Your assistant** (Claude Code or Codex) | Sets Barton up, picks good tasks, writes them in plain words, runs the models, judges what tests cannot, and explains the result. |
+| **Barton** | Small scripts: traces a fix back to the change that introduced the bug, builds clean copies of your code as it was then, runs a model, records its review, makes the page and card. |
+| **Your assistant** (Claude Code or Codex) | Sets Barton up, finds the fixes in your history, checks that each bug is a fair task, runs the models, has a blind judge decide each review, and explains the result. |
 | **You** | Say which model to test. Click **Authorize** in the browser if a login is needed. Share a card if you like it. |
 
 ## What it does not do
@@ -87,70 +93,78 @@ planted bugs, so the card marks the reviews as too easy to tell apart.*
   alone. Barton works in its own folders and keeps its records in `.barton/`,
   which it hides from git for you.
 - **It does not pick a winner for you on thin evidence.** Small differences
-  are shown as "too close to call", and a run where every model solved
+  are shown as "too close to call", and a run where every model found
   everything says the tasks were too easy.
 
 ## How judging works, and its limits
 
-- **Coding tasks** are decided by the tests the original commit added or
-  changed. A task is used only if those tests fail before the change and pass
-  twice with it. When a project has no tests for a change, your assistant
-  writes a small check from the original change (validated the same way), or,
-  when the code cannot run at all, a blind AI judge decides.
-- **Planted bugs** are mechanical changes (a flipped comparison, an
-  off-by-one, a swapped `and`/`or`) in real code, kept only when your tests
-  catch them, so they are certainly bugs. The answer key is fixed, so scores do
-  not drift as more models are tested.
-- **The judge is blind.** Model names and folder paths are removed, solutions
-  are labelled A, B, C in random order, and each comparison goes to a fresh
-  judge that sees only that one. Your assistant prefers the other vendor's
-  model as judge.
-- **The limits.** A judge is still a model and can be wrong; a handful of tasks
-  is a small sample; a public repository may have been in a model's training
-  data (the card says so); a task whose tests ask for something its
-  description leaves open fails every model for the task's fault, so your
-  assistant has a fresh judge check each task against its tests before the
-  run, and again for any task no model solved, and leaves a faulty one off the
-  cards with the reason shown; and the result is the model *in that harness*
-  (Claude Code, Codex CLI or Antigravity CLI), which the card also says. Running more attempts
-  per setting gives a fairer picture.
+- **The answer key is your own fix.** Barton traces the lines a fix changed back
+  to the change that wrote them. That change is the task, and the fix is the
+  key. It is fixed, so scores do not drift as more models are tested.
+- **A blind judge decides each review.** Where the fix landed tells where the
+  bug is, but a review with several findings often has one near there about
+  something else. So a judge reads each review against the fix: model names and
+  folder paths are removed, reviews are labelled A, B, C in random order, and
+  each task goes to a fresh judge. Your assistant prefers the other vendor's
+  model as judge. A review with no findings is a miss without a judge.
+- **A review is done by reading, in a copy.** Each model works in a fresh copy
+  of your code as it was at that change, with no later history and no web
+  access. It may not run your project, its tests or its tools, and may not
+  read outside the copy: your project as it is today is on the same computer
+  and holds the answer. Claude Code gets its file-reading tools alone, the
+  Antigravity CLI is refused every command, and Codex, which reads files
+  through shell commands, runs in a read-only sandbox. Barton then checks what
+  each model opened, and a run that read outside its copy is not scored.
+- **The limits.** A judge is still a model and can be wrong; fifteen tasks is a
+  small sample; a public repository may have been in a model's training data,
+  fix included (the card says so); whether a fix shows a bug that was already
+  there, and one a reviewer could have seen, rests on your assistant's reading
+  of each pair, and a task no model found is read again before the result is
+  shown; Codex keeps a shell, so it can be told not to run your project's tools
+  but not stopped, and on Windows its sandbox cannot keep it from reading other
+  folders, which Barton can only find afterwards; finding a bug is related to
+  writing good code but is not the same skill; and the result is the model *in
+  that harness* (Claude Code, Codex CLI or Antigravity CLI), which the card
+  also says. Running more attempts per setting gives a fairer picture.
 
 Details and the research behind these choices are in
 [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Time and cost
 
-There are two kinds of run. A **quick run** takes under 30 minutes: only the new
-model, on a few tasks that ran fast and still told models apart, compared with
-the results your usual models already have. A **full run** takes a couple of
-hours: more and larger tasks, every model, and several attempts. The quick
-tasks are part of the full set, so nothing is done twice.
+A model's run takes minutes: it reads each change and the code around it and
+writes its review, with all tasks at once. Nothing is installed or built per
+model.
 
-The slow part is preparing the tasks, so your assistant offers to do it ahead,
-right after setup, and to run your usual models then. On the day a new model
-comes out, only the new model has to run. **When the tasks were prepared long
-ago, your assistant suggests refreshing them** with newer work from your
-history, which also keeps them newer than what the models were trained on.
+Preparing the tasks takes a little longer, because your assistant reads each
+fix and the change it repairs and keeps the pairs that make fair tasks. It
+offers to do it ahead, right after setup, and to run your usual models then. On the day a new model comes
+out, only the new model has to run. **When the tasks were prepared long ago,
+your assistant suggests refreshing them** with newer work from your history,
+which also keeps them newer than what the models were trained on.
 
 Each task runs the real model through its own CLI, so a run uses your Claude or
 ChatGPT plan, or API credit, like any other session. In our run on the
-[click](https://github.com/pallets/click) library, 18 coding tasks and 5 reviews
-took each model 46 to 67 minutes of work at medium effort. At API prices that is
-$11.16 for Claude Opus 5.5 as reported by Claude Code, and about $3 to $4
-estimated for each GPT model.
-Barton runs all tasks and all models at the same time (up to 8 tasks per
-model at once), so the whole run takes about as long as its slowest tasks, not
-the sum. Larger tasks, higher thinking levels and more attempts cost more.
+[click](https://github.com/pallets/click) library, 11 reviews took each model 7
+to 12 minutes of work in all, with every task running at once. At API prices
+that is $1.58 for Claude Opus 5.5 and $0.07 for Claude Haiku 5.5 as reported by
+Claude Code, and about $1.19 and $0.58 estimated for GPT-6.2 Sol at medium and
+low effort.
+Higher thinking levels and more attempts cost more.
 
-The cards show cost as **what the run would cost at the vendor's API prices**
-("API $11.16"): as reported by Claude Code, and estimated from tokens for Codex
-and the Antigravity CLI ("API ≈$4.32", from the dated list prices in
-`prices.json`). Most people run Barton on a Claude or ChatGPT subscription,
-where a run does not cost that money but uses part of the plan's usage limits
-instead; your assistant tells you so, and how to see how much of your limit is
-left.
+The card shows cost as **what the run would cost at the vendor's API prices**:
+as reported by Claude Code, and estimated from tokens for Codex and the
+Antigravity CLI (marked "≈", from the dated list prices in `prices.json`). Most
+people run Barton on a Claude or ChatGPT subscription, where a run does not
+cost that money but uses part of the plan's usage limits instead; your
+assistant tells you so, and how to see how much of your limit is left.
 
 ## Works on
+
+Your project needs a **git history** with some fixes in it, because the tasks
+are real bugs from it. If you have not used git yet, your assistant offers to
+start saving history for you, and Barton has bugs to test on after a few weeks
+of work.
 
 Windows 10/11, macOS and Linux, with Python 3.9 or newer and Git. To test
 Anthropic models you need [Claude Code](https://claude.com/claude-code); to
@@ -158,9 +172,9 @@ test OpenAI models, the [Codex CLI](https://github.com/openai/codex); to test
 Google's Gemini models, the
 [Antigravity CLI](https://antigravity.google/docs/cli/headless/) (`agy`).
 Your assistant installs what is missing. On Windows, Barton runs every
-program without a console window, so nothing flashes up while you work, and a
-program that crashes during a run, even one the model starts from its own
-shell, ends with an error code instead of an error box waiting for a click.
+program without a console window, so nothing flashes up while you work. Models
+only read during a review, so they start no programs of your project that
+could crash or open windows.
 
 ## About Kullevi, the team behind Barton
 
@@ -290,8 +304,9 @@ they have an account.
 
 Tell the user, in two or three sentences, that Barton is ready, and that they
 can now say for example *"test GPT-6.2 Sol on my project"* in any project
-folder. Mention that a run usually takes 30 to 90 minutes, and that
-they get cards to share at the end.
+folder. Mention that preparing the tasks the first time can take a while, that
+each model's run then takes minutes, and that they get a card to share at the
+end.
 
 ### 6. Give a fix back (with the user)
 
@@ -335,33 +350,28 @@ command prints JSON. Your assistant runs these; you never need to.
 | Command | What it does |
 |---|---|
 | `check` | Which tools are installed and logged in. |
-| `mine [--max-files N] [--max-lines N] [--show N]` | Commits that could become tasks, grouped small, medium and large by changed code lines. |
-| `config [--setup CMD] [--link PATH...] [--copy PATH...] [--public yes\|no] [--check-timeout MIN] [--codex-sandbox on\|off]` | How task folders are prepared: an install command, folders to link (such as `node_modules`), untracked files to copy (such as `.env`), whether the repo is public, how long one check may take (default 15 minutes), and whether Codex runs in its sandbox (default on). |
-| `task-add FILE` / `task-remove ID` | Add a task from a JSON file, or remove one. A task that has results cannot be changed. |
-| `validate ID` | Check that the task's check fails before the change and passes twice with it. |
-| `fairness ID` / `exclude ID --reason TEXT [--undo]` | Bundle for a judge: do the hidden tests ask for more than the task says? A faulty task is left off the cards, listed with its reason. |
-| `plant ID COMMIT [--check CMD] [--seed N]` | Make a review task: one planted bug in that commit's new code, kept only if the check catches it. |
-| `quick [--coding N] [--reviews N]` | Choose the quick set: tasks that told models apart first, then the fastest. |
-| `run ID... \| all \| quick --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
-| `blind ID` / `verdict ID LABEL solved\|failed\|found\|missed` | Anonymous bundle for a blind judge, and its verdict. |
-| `pairs ID` / `prefer PAIR first\|second\|tie` | Blind A/B bundles of solutions that both passed, and the judge's preference. |
-| `forget-judge MODEL` | Remove one judge's pairwise answers, so another judge can take its place. |
-| `status` | Progress and scores so far, and how often each judge picked the first or second solution. |
-| `report [--no-open] [--quick]` | Build the results page and open it in the browser. Models are compared only on tasks every one of them has run; `--quick` shows the quick set and says so on the cards. |
+| `mine [--max-files N] [--max-lines N] [--show N]` | An overview of the history: commits grouped small, medium and large by changed code lines. |
+| `bug ID FIX [--max-lines N]` | Make a review task from a real bug: traces the lines the fix changed back to the change that wrote them. That change is the task, and the fix is the answer key. |
+| `config [--public yes\|no] [--name NAME] [--codex-sandbox on\|off]` | Whether the repo is public, the project's name on the page, and whether Codex runs in its sandbox (default on). |
+| `task-remove ID` | Remove a task. |
+| `exclude ID --reason TEXT [--undo]` | Leave a faulty task off the card, listed with its reason. |
+| `run ID... \| all --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
+| `blind ID` / `verdict ID LABEL found\|missed` | Anonymous bundle of reviews for a blind judge, and its verdict. |
+| `status` | Progress and scores so far. |
+| `report [--no-open]` | Build the results page and open it in a window of its own. Models are compared only on tasks every one of them has run. |
 | `clean` | Remove task folders left by runs that were killed. |
+
+The commands for coding tasks (`task-add`, `validate`, `fairness`, `pairs`, `prefer`, `quick`) are in the code but
+switched off until that kind of run is released.
 
 ### Where things are kept
 
 - `<project>/.barton/`: the tasks (`config.json`), results (`results.jsonl`,
-  `prefs.jsonl`), each run's output and diff under `runs/`, and `report.html`.
+  `prefs.jsonl`), each run's output and review under `runs/`, and `report.html`.
   It is listed in the project's `.git/info/exclude`, so git ignores it without
   a change to `.gitignore`.
 - `~/.barton/w/` (or `BARTON_WORK`): temporary copies of the code while a
   model works, removed after each run.
-- `~/.barton/w-prepared/`: when the project has a setup command, one installed
-  copy per task commit, so the install runs once per task instead of once per
-  model. `barton clean` removes them, and your assistant runs it when you are
-  done.
 
 ## Troubleshooting
 
@@ -372,12 +382,11 @@ command prints JSON. Your assistant runs these; you never need to.
 - **A run's outcome is `error`.** The run could not happen, for example a
   wrong model name, a login that expired, or a usage limit. Errors are left out
   of every card. Your assistant fixes the cause and runs it again.
-- **Every task is `failed` for every model.** Usually the tests cannot run in
-  the task folder: packages are missing or a setting file is absent. Your
-  assistant fixes it with `config --setup`, `--link` or `--copy`.
-- **The cards say the tasks were too easy.** Every model solved nearly
-  everything. Ask your assistant to add harder tasks: larger commits, or ones
-  that touch several parts of the code.
+- **Barton says the project has no git history.** The tasks are real bugs
+  from your history. Ask your assistant to start saving history; after a few
+  weeks of work there is enough to test on.
+- **The card says the tasks were too easy.** Every model found nearly
+  everything. Ask your assistant to add tasks from other fixes.
 - **A terminal window flashes up on Windows during a run.** That should not
   happen. Please report it, with what was running, as an issue on GitHub.
 - **Codex says commands are blocked on Windows.** Update Barton (below);

@@ -24,9 +24,10 @@ code, type commands or understand how evaluations work.
    and logs in the model CLIs with at most a click from the user, and says it
    is ready.
 2. **A test from one sentence.** The user says "test <model> on my project".
-   The agent, guided by `SKILL.md`, proposes a run in one message, picks and
-   validates tasks from the project's history, runs the models, judges blind
-   what tests cannot, and opens the results.
+   The agent, guided by `SKILL.md`, proposes a run in one message, finds real
+   bugs in the project's history and checks that each is a fair task, runs the
+   models, has their reviews judged blind, and opens the results. A model's run
+   takes minutes.
 3. **Shareable, honest cards.** The results page draws cards with raw counts,
    the judging method and the sample size printed on them, credited to the
    user and to Barton-eval, ready to copy into a post.
@@ -35,22 +36,24 @@ code, type commands or understand how evaluations work.
 
 ## What Barton does
 
-- **Mine** commits that could become tasks, grouped by size.
+- **Trace real bugs**: from a commit that fixed a bug to the change that
+  introduced it, which becomes a review task with the fix as its answer key.
 - **Build fair task folders**: the code at the task's commit, with no later
   history, outside the user's repository.
-- **Validate checks**: fail before the change, pass twice with it.
-- **Plant review bugs** by mechanical mutation, kept only when tests catch them.
-- **Run** one model on one task through its own CLI, unattended, with web
+- **Run** one model on one task through its own CLI, unattended, reading only
+  and only in its task folder as far as the CLI can be held to it, with web
   access off and the user's own CLI settings left out, and record the outcome,
   time, tokens and cost.
-- **Prepare blind judging**: anonymous bundles, and A/B pairs in both orders.
-- **Report**: a static page with cards that can be copied or saved as PNG.
+- **Prepare blind judging**: anonymous bundles of reviews with the answer key.
+- **Report**: a static page with a card that can be copied or saved as PNG.
+- **Coming soon: coding tasks**, where a model redoes a real change and the
+  project's own tests decide. The code is there, switched off.
 
 ## Left to the agent, not built into Barton
 
-- Choosing and phrasing tasks, deciding how the project's tests run, writing a
-  check where tests are missing.
-- Judging blind bundles and pairs (one fresh judge per bundle).
+- Finding the fixes in the history, and deciding whether each bug is a fair
+  task: already wrong when the change was made, and visible to a reviewer.
+- Judging blind bundles (one fresh judge per bundle).
 - Explaining the result to the user in plain words.
 
 Barton has no server, no accounts, no leaderboard, no telemetry and no
@@ -73,8 +76,8 @@ background service.
   each set Barton up on a clean machine, with no help beyond the user's clicks
   to authorize logins.
 - Asked to test a model, the agent completes a run on a real project, with
-  validated tasks, both coding and review, and opens a page whose cards match
-  the recorded results.
+  real bugs as review tasks, and opens a page whose card matches the recorded
+  results.
 - A run with no difference between models says "too close to call" or "too
   easy", never a winner.
 - No terminal window appears on Windows during setup or a run.

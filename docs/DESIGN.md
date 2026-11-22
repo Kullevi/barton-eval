@@ -20,55 +20,68 @@ quick to run, and honest about being small.
   submitted, and silent collection from private code would cost the trust the
   tool depends on. The shared card is the way results spread.
 
+## Quick first
+
+Barton exists to be run the day a model comes out, and to give something worth
+sharing the same day. The first version asked every model to redo real changes
+and let the project's tests decide. That is the strongest evidence, but on a
+large codebase each task needs a full install and build, and a run took hours.
+So the released kind of run is review only: models read code and write a
+review, nothing is built per model, and a run takes minutes. Coding tasks stay
+in the code, switched off (`CODING_TASKS`), and come back as an optional deeper
+run.
+
 ## Tasks
 
-- **Coding tasks from history**, in the style of SWE-bench: a commit that
-  changed code (and ideally tests) becomes a task. The model starts from the
-  commit's parent; the commit's own tests, hidden while it works, decide.
-- **Validation before use**: a check must fail before the change and pass
-  twice with it (catches broken and flaky checks). Prompts must name any exact
-  interface the tests rely on, after SWE-bench Verified found that many mined
-  tasks were underspecified. A fresh judge compares each prompt with what its
-  hidden tests assert before any model runs it, and again for any task every
-  model failed; a task whose tests want what the prompt leaves open is left
-  off the cards with the reason shown (`exclude`), never deleted. In our own
-  run on a large private codebase, two of four tasks that every model failed
-  were faulty in exactly this way.
-- **Without tests**: the test leader writes a check from the original change
-  (validated the same way), or, when the code cannot run, a blind judge
-  decides. The method is recorded per result and printed on the card.
-- **Review tasks with planted bugs**: one mechanical mutation (flipped
-  comparison, swapped `and`/`or`, off-by-one, flipped boolean) in a real recent
-  commit's new code. Mutation operators rather than model-invented bugs, so no
-  model family plants bugs in its own style; a fixed answer key, so scores do
-  not shift as more models are tested. Mining real bug-introducing commits
-  (SZZ) was rejected for v0: the research on it reports high noise, and
-  vibe-coded histories rarely mark fixes.
+- **A real bug, found by its fix.** A review task is the change that introduced
+  a bug the project fixed later. The test leader finds fix commits by reading
+  the history; `barton bug` traces the lines a fix changed (`git blame` on the
+  fix's parent) to the commit that wrote most of them, which is the task. The
+  reviewer gets that commit as it was made, with its message. This is SZZ, with
+  the step the research finds noisy, deciding which commits are fixes and
+  whether the blamed commit really introduced the bug, done by a reader and not
+  by a rule: the test leader keeps a pair only if the code was already wrong
+  then, and a reviewer could have seen it.
+- **What was tried first.** Mechanical mutations (a flipped comparison, a
+  swapped `and`/`or`) in a real commit: on a large private codebase every
+  model, also at the lowest effort, found five or six of seven. Then a real
+  change with one part left out, so the bug was the project's own earlier code
+  between two parts of the system: five settings, from the cheapest model to
+  the most capable, found 11 to 13 of 13 or 14, on that codebase and on a
+  public library. A change with a part missing gives itself away, because the
+  rest of the change and its message point at the gap. On real bugs the same
+  settings found 3 to 9 of 16 or 21, in the order one would expect. Bugs that
+  got past the review of their day are hard; bugs made for the test are not.
+- **The blamed commit, not its merge.** A merge of a long branch is thousands
+  of lines. The commit that wrote the lines is the unit a person reviewed.
+- **A judge for every review with findings.** Reviews differ in how much they
+  raise: one model averaged six findings per review where another averaged
+  two. With many findings one lands near the fixed lines by chance, so place
+  alone is not a find. A blind judge reads each review against the fix. A
+  review with no findings is a miss without a judge. The card shows findings
+  per review beside the score.
+- **History is required.** A project without git history, or with no fixes in
+  it yet, gets no run: the test leader offers to start saving history, and
+  invents no tasks to have a result on the first day.
+- **Coming soon: coding tasks from history**, in the style of SWE-bench: the
+  model starts from a commit's parent and the commit's own tests, hidden while
+  it works, decide. A check must fail before the change and pass twice with it,
+  and a fresh judge compares each prompt with what its hidden tests assert,
+  after SWE-bench Verified found that many mined tasks were underspecified.
 
 ## Telling models apart
 
 The first trial on a small library showed the failure to avoid: two models
 solved every small task, so the run said "equal" when it only meant "too
-easy". Three changes address it:
+easy".
 
-- **Hard tasks, enough of them.** `mine` groups candidates by changed code
-  lines (small under 25, medium up to 150, large above). The test leader picks
-  mostly large and medium ones, aiming for the best model to solve about half
-  to four fifths, and by default runs 10 coding and 5 review tasks, never
-  fewer than 5 of each when the history has them.
-- **Quality when both passed.** A blind A/B judgment of solutions that both
-  pass, in both orders; a win counts only when both orders agree (the standard
-  defence against position bias in pairwise LLM judging, as in MT-Bench and
-  Chatbot Arena practice). The two orders may go to judges from different
-  vendors; with more judges, every answer must name the same solution.
-  `status` shows how often each judge picked the first or second answer, and a
-  judge that mostly picks one position can be removed (`forget-judge`).
-- **Which tasks told them apart.** The coding card notes how many tasks some
-  settings solved and others did not; tasks every setting solved, or none did,
-  cannot show a difference. This is the one place Barton compares models with
-  each other, so it is shown on its own card and never changes the solved
-  counts, which stay absolute.
-- **Ceiling warning.** When every setting solves at least 90 % of the tasks,
+- **Hard tasks, enough of them.** The test leader aims for the best model to
+  find about a third to two thirds of the bugs, and by default runs about 15
+  tasks, never fewer than 8 when the history has them.
+- **Which tasks told them apart.** The card notes how many tasks some settings
+  made and others did not; tasks every setting made, or none did, cannot show
+  a difference.
+- **Ceiling warning.** When every setting makes at least 90 % of the tasks,
   the card says the tasks were too easy instead of "too close to call", and
   the test leader adds harder tasks.
 
@@ -79,6 +92,22 @@ easy". Three changes address it:
   worktree would expose later commits, including the answer.
 - **Web access off** (Claude: `WebFetch`/`WebSearch` disallowed; Codex:
   `web_search` disabled), so a public repo's fix cannot be looked up.
+- **A review only reads, and only its copy.** The first review runs let models
+  run commands. Three things followed: on a public library, tests the models
+  ran imported the copy of that library installed on the computer, a later
+  version with the bug fixed; on a private codebase, a model followed the
+  project's own instructions to the real project folder, where today's code
+  holds the answer; and a Python the model started crashed into an error box
+  on the user's screen. A review needs none of this, so the change is given as
+  a file (`CHANGE_UNDER_REVIEW.diff`) and each CLI is held to reading as far as
+  it can be: Claude gets `Read`, `Grep` and `Glob` alone, and its permission
+  mode refuses reads outside the folder; agy is refused every command, write
+  and URL by deny rules; Codex reads files through shell commands, so it keeps
+  a shell, in its read-only sandbox. agy's strict mode refused reads inside the
+  folder at random in print mode, and Codex's Windows sandbox cannot restrict
+  reads, so what a review read is checked afterwards: agy names every path its
+  tools open, and a Codex command that names the project's own folder is found
+  in its text. Such a run is an error, not a score.
 - **The user's own settings are left out** of runs (Claude:
   `--setting-sources project,local --strict-mcp-config`; Codex:
   `--ignore-user-config`), so hooks and MCP servers do not change results; the
@@ -106,8 +135,7 @@ easy". Three changes address it:
 
 Tasks are pinned to commits, so a model tested months later solves exactly the
 same tasks, however much the code has moved on. Scores are never relative to
-other models: a solution is solved or not on its own, and a review finds the
-planted bug or not.
+other models: a review finds the bug or not, on its own.
 
 The cards compare every model on the tasks they all have results for. A setting
 with results for under half the tasks of the most complete one, such as a run
@@ -125,9 +153,9 @@ comparison down to the few tasks it reached.
   tasks: with a handful of tasks most gaps are noise, with fifty they are not.
 - The harness ("Codex CLI") and runs per setting are on the card: the result
   is the model in that harness.
-- Cost: Claude Code reports cost; for Codex it is estimated from tokens at list
-  prices (`prices.json`) and marked "est.". On a subscription the user may not
-  pay per run.
+- Cost: Claude Code reports cost; for Codex and the Antigravity CLI it is
+  estimated from tokens at list prices (`prices.json`) and marked as an
+  estimate. On a subscription the user may not pay per run.
 - Above the results, two plain sentences on how Barton tests, not a verdict;
   below them, one credit line: "Run with Barton-eval · by Kullevi" and the
   repository link.

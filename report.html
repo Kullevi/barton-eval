@@ -140,13 +140,13 @@ function settings(kind) {
     const effort = r.effort || "default";
     const key = `${r.model}|${r.harness}|${effort}`;
     if (!map.has(key)) map.set(key, { key, model: r.model, harness: r.harness, effort, hits: 0, n: 0, secs: 0, cost: 0,
-      costKnown: true, costEst: false, attempts: new Set(), tasks: new Set(), methods: new Set(), other: 0 });
+      costKnown: true, costEst: false, attempts: new Set(), tasks: new Set(), methods: new Set(), other: 0, findings: 0 });
     const s = map.get(key);
     s.n += 1; s.hits += ["solved", "found"].includes(r.outcome) ? 1 : 0;
     s.secs += r.seconds || 0; s.attempts.add(r.attempt); s.tasks.add(r.task); s.methods.add(r.method);
     if (r.cost_usd == null) s.costKnown = false; else s.cost += r.cost_usd;
     if (r.cost_kind === "estimated") s.costEst = true;
-    s.other += r.other_findings || 0;
+    s.other += r.other_findings || 0; s.findings += r.findings || 0;
   }
   const list = [...map.values()];
   const efforts = m => new Set(list.filter(s => s.model === m).map(s => s.effort)).size;
@@ -198,7 +198,9 @@ function scoreSpec(kind, color) {
     rows: list.map(s => ({
       name: s.model, tag: s.tag, detail: s.detail, color: color(s.key),
       segs: Array.from({ length: s.n }, (_, i) => i < s.hits ? "w" : "l"),
-      value: `${s.hits} / ${s.n}`, note: [fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
+      // A reviewer that raises many alarms finds more by raising more: the count stands beside the score.
+      value: `${s.hits} / ${s.n}`, note: [write ? "" : `${(s.findings / s.n).toFixed(1)} findings per review`,
+        fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
     })),
   };
 }
@@ -346,7 +348,7 @@ function panelsOf() {
 const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.clear ? "" : " · no clear winner")
   : p.easy ? "too easy to tell apart"
   : `${plural(p.n, p.key.startsWith("write") ? "task" : "review")}${p.runs === 1 ? "" : ` · ${p.runs} runs each`}`
-    + (p.key === "write-score" && p.rows.length > 1 ? ` · ${apartCount()} told apart` : "")
+    + (p.key.endsWith("-score") && p.rows.length > 1 && apartCount(p.key.split("-")[0]) ? ` · ${apartCount(p.key.split("-")[0])} told apart` : "")
     + (p.close ? " · too close to call" : "");
 
 // What the page answers and how, above the results: the point is that the test
@@ -355,12 +357,12 @@ function intro(P) {
   return {
     headline: "AI models, tested on my own codebase",
     sub: ["Not a general benchmark.",
-      P.write ? "Each model redid real changes from this code's history, and the original tests decided whether it succeeded." : "Each model reviewed real changes from this code's history, with one planted bug to find.",
+      P.write ? "Each model redid real changes from this code's history, and the original tests decided whether it succeeded." : "Each model reviewed real changes from this code's history that held a bug found and fixed later, and had to find that bug.",
       DATA.quick ? "A quick run, on few tasks." : ""].filter(Boolean).join(" "),
   };
 }
 const titleOf = p => p.key === "write-quality" ? "Better solution when both passed"
-  : p.key === "write-score" ? "Coding tasks solved" : "Planted bugs found in review";
+  : p.key === "write-score" ? "Coding tasks solved" : "Real bugs found in code review";
 
 // Which tasks told the settings apart: every one made it, some did, or none did.
 // Only the "some" tasks can show a difference; the others are too easy or too hard here.
@@ -379,9 +381,9 @@ function splitOf(taskId) {
   return rates[0] === 1 ? "all" : rates[0] === 0 ? "none" : null;
 }
 
-// How many coding tasks told the settings apart, for the panel's note.
-function apartCount() {
-  return (DATA.tasks || []).filter(t => t.kind === "write" && splitOf(t.id) === "some").length;
+// How many tasks of one kind told the settings apart, for the panel's note.
+function apartCount(kind) {
+  return (DATA.tasks || []).filter(t => t.kind === kind && splitOf(t.id) === "some").length;
 }
 
 

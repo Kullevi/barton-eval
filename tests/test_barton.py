@@ -1,4 +1,4 @@
-"""Tests for barton.py: task folders, mining, planting, grading and parsing.
+"""Tests for barton.py: task folders, mining, bug tracing, grading and parsing.
 
 Builds a small git repository in a temp folder; no model is called.
 """
@@ -19,6 +19,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import barton  # noqa: E402
+
+# Coding tasks are switched off in this version (coming soon); their code is still tested.
+barton.CODING_TASKS = True
 
 
 def sh(repo: Path, *args: str) -> str:
@@ -247,35 +250,90 @@ class RepoTest(unittest.TestCase):
         self.assertIsNotNone(p.wait(timeout=10))
         self.assertFalse(folder.exists())
 
-    def test_plant_flips_a_comparison_and_grading_finds_it(self):
-        d = call("plant", "--repo", str(self.repo), "r1", self.fix, "--seed", "1")
-        self.assertEqual(d["file"], "calc.py")
-        self.assertNotEqual(d["before"], d["after"])
+    def _bug_and_fix(self) -> str:
+        """A change that introduces a bug among other work, and a later commit that fixes it."""
+        (self.repo / "shop.py").write_text(
+            "def price(n, rate=0):\n    net = n * 10\n    tax = net * rate\n    return net - tax\n"
+            "\n\ndef label(n, rate=0):\n    return str(price(n, rate)) + ' kr'\n")
+        sh(self.repo, "add", "-A")
+        sh(self.repo, "commit", "-q", "-m", "Add shop with tax")
+        intro = sh(self.repo, "rev-parse", "HEAD").strip()
+        (self.repo / "notes.txt").write_text("unrelated work\n")
+        sh(self.repo, "add", "-A")
+        sh(self.repo, "commit", "-q", "-m", "Notes")
+        text = (self.repo / "shop.py").read_text().replace("return net - tax", "return net + tax")
+        (self.repo / "shop.py").write_text(text)
+        sh(self.repo, "commit", "-q", "-am", "Fix tax being subtracted")
+        return intro
+
+    def test_bug_traces_a_fix_to_the_change_that_wrote_the_bug(self):
+        intro = self._bug_and_fix()
+        d = call("bug", "--repo", str(self.repo), "r1", "HEAD")
+        self.assertEqual(d["introduced_by"], intro[:12])
+        self.assertEqual(d["where"], [{"file": "shop.py", "line": 4, "end": 4}])
         b = barton.Barton(self.repo)
         task = b.task("r1")
-        folder = barton.make_folder(b, task["base"], "r1", barton.review_files(b, task), "change")
-        line = (folder / "calc.py").read_text().split("\n")[d["line"] - 1]
-        self.assertEqual(line.strip(), d["after"])
-        self.assertEqual(sh(folder, "log", "--format=%s").split("\n")[0], "change")
-        reply = "Two issues.\n\n```json\n" + json.dumps(
-            [{"file": "calc.py", "line": d["line"] + 1, "problem": "wrong bound"},
-             {"file": "calc.py", "line": 1, "problem": "style"}]) + "\n```\n"
-        g = barton.grade_review(task, folder, Path(self.tmp.name), reply)
-        self.assertEqual(g["outcome"], "found")
-        self.assertEqual(g["other_findings"], 1)
+        self.assertEqual((task["reference"], task["source"]), (intro, "fixed"))
+        folder = barton.make_folder(b, task["base"], "r1", barton.review_files(b, task),
+                                    barton.review_message(b, task))
+        self.assertIn("return net - tax", (folder / "shop.py").read_text())  # the bug, as it was made
+        self.assertFalse((folder / "notes.txt").exists())  # nothing later, the fix least of all
+        self.assertEqual(sh(folder, "log", "-1", "--format=%s").strip(), "Add shop with tax")
+        tmp = Path(self.tmp.name)
+        reply = lambda fs: "Review.\n\n```json\n" + json.dumps(fs) + "\n```\n"
+        # A finding at the place may be about something else: a judge decides, with the fix.
+        g = barton.grade_review(task, folder, tmp, reply([{"file": "shop.py", "line": 4, "problem": "x"}]))
+        self.assertEqual((g["outcome"], g["method"], g["at_the_place"]), ("pending", "judge", True))
+        self.assertEqual(barton.grade_review(task, folder, tmp, reply([]))["outcome"], "missed")
+        b.append_result({"run": "r1-m", "task": "r1", "kind": "review", "model": "m", "harness": "h",
+                         "attempt": 1, "outcome": "pending"})
+        (b.dir / "runs" / "r1-m").mkdir(parents=True)
+        (b.dir / "runs" / "r1-m" / "final.txt").write_text("the tax is subtracted")
+        key = Path(call("blind", "--repo", str(self.repo), "r1")["bundle"]).read_text()
+        self.assertIn("Fix tax being subtracted", key)
+        self.assertIn("+    return net + tax", key)
 
-    def test_review_folder_drops_the_old_path_of_a_renamed_file(self):
-        sh(self.repo, "mv", "calc.py", "mathx.py")
-        (self.repo / "mathx.py").write_text((self.repo / "mathx.py").read_text() + "\n\ndef pos(x):\n    if x > 0:\n        return x\n    return 0\n")
-        sh(self.repo, "commit", "-q", "-am", "Rename calc and add pos")
-        sha = sh(self.repo, "rev-parse", "HEAD").strip()
-        d = call("plant", "--repo", str(self.repo), "r2", sha, "--seed", "1")
+    def test_bug_refuses_a_commit_that_fixes_no_earlier_code(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+            barton.main(["bug", "--repo", str(self.repo), "r1", self.fix])  # only adds new code
+
+    def test_a_task_from_before_real_bugs_still_runs(self):
         b = barton.Barton(self.repo)
-        task = b.task("r2")
-        folder = barton.make_folder(b, task["base"], "r2", barton.review_files(b, task), "change")
-        self.assertTrue((folder / "mathx.py").exists())
-        self.assertFalse((folder / "calc.py").exists())
-        self.assertEqual(d["file"], "mathx.py")
+        task = {"id": "old", "kind": "review", "base": self.fix + "^", "reference": self.fix,
+                "plant": {"file": "calc.py", "line": 6, "before": "if x < lo:", "after": "if x <= lo:"}}
+        files = barton.review_files(b, task)
+        self.assertIn(b"    if x <= lo:", files["calc.py"])
+        self.assertIn("tests/test_calc.py", files)
+        tmp = Path(self.tmp.name)
+        reply = "```json\n" + json.dumps([{"file": "calc.py", "line": 7, "problem": "bound"}]) + "\n```"
+        self.assertEqual(barton.grade_review(task, tmp, tmp, reply)["outcome"], "found")
+
+    def test_clean_waits_for_a_command_that_uses_task_folders(self):
+        folder = barton.WORK_ROOT / "x"
+        folder.mkdir(parents=True)
+        hold = subprocess.Popen([sys.executable, "-c",
+            f"import sys, time; sys.path.insert(0, {str(Path(barton.__file__).parent)!r}); import barton\n"
+            f"from pathlib import Path\nbarton.WORK_ROOT = Path({str(barton.WORK_ROOT)!r})\n"
+            "with barton.working():\n    print('held', flush=True); time.sleep(30)\n"], stdout=subprocess.PIPE)
+        try:
+            hold.stdout.readline()
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+                barton.main(["clean"])
+            self.assertTrue(folder.exists())
+        finally:
+            hold.kill()
+            hold.wait()
+            hold.stdout.close()
+        call("clean")  # the lock went with its holder
+        self.assertFalse(folder.exists())
+
+    def test_coding_tasks_are_switched_off(self):
+        spec = Path(self.tmp.name) / "t.json"
+        spec.write_text(json.dumps({"id": "t1", "kind": "write", "base": self.fix + "^", "prompt": "x"}))
+        buf = io.StringIO()
+        with unittest.mock.patch.object(barton, "CODING_TASKS", False), self.assertRaises(SystemExit), contextlib.redirect_stdout(buf):
+            barton.main(["task-add", "--repo", str(self.repo), str(spec)])
+        self.assertIn("coming soon", buf.getvalue())
 
     def test_mine_counts_a_merged_branch_as_one_commit(self):
         sh(self.repo, "checkout", "-q", "-b", "feature")
@@ -475,6 +533,34 @@ class PromptTest(unittest.TestCase):
         text = "Task.\n\nRules after a blank line."
         got = barton.run_cmd(echo, Path("."), 60, stdin_text=text)[1]
         self.assertEqual(got.splitlines(), text.splitlines())
+
+    def test_a_review_may_only_read(self):
+        with unittest.mock.patch.object(barton, "resolve_cli", return_value=["x.exe"]):
+            claude = barton.harness_cmd("claude", "m", None, Path("."), review=True)
+            codex = barton.harness_cmd("codex", "m", None, Path("."), review=True)
+            agy = barton.harness_cmd("agy", "m", None, Path("."), "p", review=True)
+        self.assertEqual(claude[claude.index("--tools") + 1], "Read,Grep,Glob")
+        self.assertNotIn("--allowedTools", claude)
+        self.assertIn("read-only", codex)
+        self.assertNotIn("--dangerously-skip-permissions", agy)
+        settings = json.loads(agy[agy.index("--settings") + 1])
+        self.assertIn("command(*)", settings["permissions"]["deny"])
+
+    def test_a_review_that_read_the_project_itself_is_found(self):
+        home = Path.home().resolve()
+        b = unittest.mock.Mock(repo=home / "code" / "app")
+        folder = home / ".barton" / "w" / "t1"
+        went = barton.outside_reads(b, folder, {"commands": [
+            "rg -n foo src/main.py",
+            "powershell -Command \"Get-Content (Join-Path $HOME 'code\\app\\src\\main.py')\"",
+            f"cat {(home / 'code' / 'app' / 'x.py').as_posix()}",
+            "cat ~/code/application/x.py | head",
+        ]})
+        self.assertEqual(len(went), 2)  # not the neighbour whose name starts alike
+        self.assertEqual(barton.outside_reads(b, folder, {"commands": ["git show HEAD", "rg app"]}), [])
+        # agy names each file it opens.
+        paths = {"paths": [str(folder / "src" / "a.py"), str(home / "notes.txt")]}
+        self.assertEqual(barton.outside_reads(b, folder, paths), [str(home / "notes.txt")])
 
     def test_codex_sandbox_can_be_turned_off_and_reads_instructions_whole(self):
         with unittest.mock.patch.object(barton, "resolve_cli", return_value=["x"]):

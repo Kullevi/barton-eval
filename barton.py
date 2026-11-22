@@ -39,6 +39,11 @@ RUN_TIMEOUT = 45 * 60
 CHECK_TIMEOUT = 15 * 60
 SETUP_TIMEOUT = 3 * 60 * 60  # a monorepo build may first wait for the machine to have room
 JOBS = 8  # runs of one model at the same time; the model's provider is the limit, not this computer
+# Coming soon: coding tasks (a model redoes a real change and the change's own tests decide).
+# This version runs review tasks only, which need no build per model and finish in minutes.
+CODING_TASKS = False
+COMING_SOON = ("Coding tasks are coming soon. This version runs review tasks, made with "
+               "`barton bug`.")
 
 TEST_PATH = re.compile(
     r"(^|/)(tests?|__tests__|spec|specs)/|(^|/)test_[^/]+\.py$|_test\.(py|go|rb)$"
@@ -198,7 +203,7 @@ def stop_everything(signum=None, frame=None) -> None:
         STOPPING.set()
         # Wait for a process being started in a worker to be registered, but never for
         # long: this handler runs in the main thread, which may hold the lock itself
-        # (validate and plant run their checks there).
+        # (validate runs its checks there).
         if _launch_lock.acquire(timeout=2):
             _launch_lock.release()
         for p in list(LIVE):
@@ -246,7 +251,10 @@ class Barton:
     def __init__(self, repo: Path):
         self.repo = repo.resolve()
         if git(self.repo, "rev-parse", "--is-inside-work-tree", check=False).strip() != "true":
-            fail(f"{self.repo} is not a git repository.")
+            fail(f"{self.repo} has no git history. Barton's tasks are real changes from a "
+                 "project's history, so it needs one. Offer to start saving history now "
+                 "(`git init` and a first commit); after a few weeks of work there are "
+                 "changes to test on.")
         self.repo = Path(git(self.repo, "rev-parse", "--show-toplevel").strip())
         self.dir = self.repo / ".barton"
 
@@ -340,6 +348,47 @@ class os_lock:
             import fcntl
             fcntl.flock(self.f, fcntl.LOCK_UN)
         self.f.close()
+
+
+def busy_dir() -> Path:
+    return WORK_ROOT.parent / (WORK_ROOT.name + "-busy")
+
+
+class working:
+    """Held by a command while it uses task folders, so `clean` in another window
+    never removes folders from under it. The lock goes when its holder dies."""
+
+    def __enter__(self):
+        self.lock = os_lock(busy_dir() / f"{os.getpid()}.lock")
+        self.lock.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        self.lock.__exit__(*exc)
+        try:
+            self.lock.path.unlink()
+        except OSError:
+            pass
+
+
+def others_working() -> bool:
+    """Is any other Barton command using task folders right now?"""
+    found = False
+    for f in busy_dir().glob("*.lock") if busy_dir().is_dir() else []:
+        try:
+            with open(f, "a+") as h:
+                if os.name == "nt":
+                    import msvcrt
+                    h.seek(0)
+                    msvcrt.locking(h.fileno(), msvcrt.LK_NBLCK, 1)
+                    msvcrt.locking(h.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(h, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            f.unlink()  # nobody holds it: left by a command that was killed
+        except OSError:
+            found = True
+    return found
 
 
 # ---------------------------------------------------------------- check
@@ -443,10 +492,13 @@ def cmd_mine(args) -> None:
     for g in groups.values():
         g.sort(key=lambda c: not c["has_tests"])  # stable: keeps newest first
     each = max(1, args.show // 3)
-    out({"repo": str(b.repo), "commits_scanned": len(commits),
+    few = ({"too_few": "Under six changes here can become tasks. Say so, and offer a run on what "
+                       "there is or to come back when the project has more history."}
+           if len(cands) < 6 else {})
+    out({"repo": str(b.repo), "commits_scanned": len(commits), **few,
          "counts": {k: len(v) for k, v in groups.items()},
-         "hint": "Choose hard tasks: mostly large and medium, few small. Small tasks rarely "
-                 "separate strong models.",
+         "hint": "Choose hard changes: mostly large and medium ones that touch several files or "
+                 "functions. Small changes rarely separate strong models.",
          **{k: v[:each] for k, v in groups.items()}})
 
 
@@ -672,6 +724,8 @@ def cmd_task_add(args) -> None:
             fail(f"Task needs '{key}'.")
     if task["kind"] not in ("write", "review"):
         fail("kind must be 'write' or 'review'.")
+    if task["kind"] == "write" and not CODING_TASKS:
+        fail(COMING_SOON)
     task["base"] = git(b.repo, "rev-parse", task["base"]).strip()
     if task.get("reference"):
         task["reference"] = git(b.repo, "rev-parse", task["reference"]).strip()
@@ -814,86 +868,109 @@ def cmd_validate(args) -> None:
     out({"task": task["id"], "valid": ok, "before": before, "after": [after1, after2]})
 
 
-# ---------------------------------------------------------------- planted bugs
+# ---------------------------------------------------------------- review tasks
 
-MUTATIONS = [
-    (r"===", "!=="), (r"!==", "==="), (r"==", "!="), (r"!=", "=="),
-    (r"<=", "<"), (r">=", ">"), (r"(?<![<=!-])<(?![<=])", "<="), (r"(?<![>=-])>(?![>=])", ">="),
-    (r"&&", "||"), (r"\|\|", "&&"), (r"\band\b", "or"), (r"\bor\b", "and"),
-    (r"\btrue\b", "false"), (r"\bfalse\b", "true"), (r"\bTrue\b", "False"), (r"\bFalse\b", "True"),
-    (r"\+ 1\b", "- 1"), (r"- 1\b", "+ 1"),
-    (r"\bis None\b", "is not None"), (r"\bis not None\b", "is None"),
-    (r"\bnot in\b", "in"), (r"\bif not\b", "if"), (r"\[-1\]", "[0]"),
-]
-COMMENT = re.compile(r"^\s*(#|//|/\*|\*|<!--)")
+REVIEW_PROMPT = ("Review the change in `CHANGE_UNDER_REVIEW.diff` in the current folder (the commit "
+                 "message, then the diff; the code in this folder has the change applied) for "
+                 "bugs: in what it changes, and in what it needed to change but did not.")
+NEAR = 8  # fixed lines of one file this close together are one place
 
 
-def cmd_plant(args) -> None:
-    """Make a review task: a real commit with one mechanical bug planted in it."""
+def fixed_lines(b: Barton, fix: str) -> dict[str, list[int]]:
+    """The lines of non-test code a fix replaced or wrote next to, numbered as in the
+    fix's parent: where the bug was."""
+    diff = git(b.repo, "diff", "-U0", "--no-renames", fix + "^", fix)
+    lines: dict[str, list[int]] = {}
+    path = None
+    for line in diff.splitlines():
+        if line.startswith("diff --git"):
+            path = None
+        elif line.startswith("--- "):
+            q = line[4:]
+            path = q[2:] if q.startswith("a/") and is_code(q[2:]) and not is_test(q[2:]) else None
+        elif line.startswith("+++ ") and line[4:] == "/dev/null":
+            path = None
+        elif line.startswith("@@") and path:
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? ", line)
+            a, n = int(m[1]), int(m[2] or 1)
+            # Lines only added have no old line: the line they were written after stands in.
+            lines.setdefault(path, []).extend(range(a, a + n) if n else [a] if a else [])
+    return lines
+
+
+def cmd_bug(args) -> None:
+    """Make a review task from a real bug: the change that introduced what a later
+    commit fixed. The reviewer gets the introducing change as it was, and the answer
+    key is the lines the fix went on to change."""
     b = Barton(Path(args.repo))
     if any(r["task"] == args.id for r in b.results()):
         fail(f"Task '{args.id}' already has results and cannot change. Use a new id.")
-    sha = git(b.repo, "rev-parse", args.commit.strip()).strip()
-    base = git(b.repo, "rev-parse", sha + "^").strip()
-    diff = git(b.repo, "diff", "-U0", base, sha)
-    spots, path, line_no = [], None, 0
-    for line in diff.splitlines():
-        if line.startswith("+++ "):
-            p = line[4:]
-            path = p[2:] if p.startswith("b/") else None
-        elif line.startswith("@@"):
-            m = re.search(r"\+(\d+)", line)
-            line_no = int(m.group(1)) if m else 0
-        elif line.startswith("+") and path and is_code(path) and not is_test(path):
-            text = line[1:]
-            # Code-like lines only: prose in docstrings has no brackets or assignments.
-            if (text.strip() and not COMMENT.match(text) and len(text) < 300
-                    and re.search(r"[=(){}\[\];]|\breturn\b|\bif\b|\bwhile\b", text)):
-                for pat, rep in MUTATIONS:
-                    for m in re.finditer(pat, text):
-                        before = text[: m.start()]
-                        if before.count('"') % 2 == 1 or before.count("'") % 2 == 1:
-                            continue  # inside a string literal
-                        spots.append((path, line_no, text, pat, rep, m.start(), m.end()))
-            line_no += 1
-    if not spots:
-        fail("No line in this commit's added code can take a planted bug. Pick another commit.")
-    rng = random.Random(args.seed if args.seed is not None else sha)
-    rng.shuffle(spots)
-    prompt = args.prompt or "Review the latest commit in this repository (`git show HEAD`) for bugs."
-    tried = []
-    for path, line_no, text, pat, rep, s, e in spots[: args.tries]:
-        if args.check:
-            progress(f"{args.id}: trying a planted bug in {path}:{line_no}")
-        new_text = text[:s] + rep + text[e:]
-        task = {
-            "id": args.id, "kind": "review", "base": base, "reference": sha, "source": "planted",
-            "prompt": prompt,
-            "plant": {"file": path, "line": line_no, "before": text.strip(),
-                      "after": new_text.strip(), "operator": f"{pat} -> {rep}"},
-        }
-        if not args.check:
-            break
-        # With the project's tests: keep only a bug they catch, so it is surely a real bug.
-        task["plant"]["check"] = args.check
-        env = dict(kv.split("=", 1) for kv in args.env or [])
-        if env:
-            task["plant"]["env"] = env
-        name = f"p-{args.id}"
-        folder = make_folder(b, base, name, review_files(b, task), "change")
-        try:
-            code, so, se, _, to = run_cmd(args.check, folder, check_timeout(b), shell=True, env=env)
-        finally:
-            remove_tree(folder)
-        tried.append({"line": line_no, "after": new_text.strip(), "tests_failed": code != 0})
-        if code != 0:
-            task["plant"]["caught_by_tests"] = True
-            break
-    else:
-        fail(f"None of the {len(tried)} planted bugs tried made the tests fail, so they may be "
-             "harmless. Pick another commit.")
+    fix = git(b.repo, "rev-parse", args.fix.strip()).strip()
+    where = fixed_lines(b, fix)
+    if not where:
+        fail("This commit changes no existing non-test code, so it shows no earlier bug.")
+    # Who wrote the lines the fix changed? The commit itself, not the merge that brought
+    # it in: a merge of a long branch is thousands of lines, too much for one review.
+    origin: dict[str, list[tuple[str, int]]] = {}
+    for path, nums in where.items():
+        spans = []
+        for n in sorted(set(nums)):
+            if spans and n == spans[-1][1] + 1:
+                spans[-1][1] = n
+            else:
+                spans.append([n, n])
+        out_ = git(b.repo, "blame", "--porcelain",
+                   *[f"-L{a},{z}" for a, z in spans], fix + "^", "--", path, check=False)
+        sha, their_path = None, {}
+        for line in out_.splitlines():
+            m = re.match(r"([0-9a-f]{40}) (\d+) \d+", line)
+            if m:
+                sha, num = m[1], int(m[2])
+                origin.setdefault(sha, []).append((path, num))
+            elif line.startswith("filename ") and sha:
+                their_path[sha] = line[9:]
+        for sha_, spots_ in origin.items():  # the file's name when that commit wrote it
+            origin[sha_] = [(their_path.get(sha_, q) if q == path else q, n) for q, n in spots_]
+    total = sum(len(v) for v in origin.values())
+    if not total:
+        fail("Could not trace the fixed lines back to the change that wrote them.")
+    intro, spots = max(origin.items(), key=lambda kv: len(kv[1]))
+    if len(spots) * 3 < total:
+        fail("The fixed lines come from many earlier changes, none of them a third, so no one "
+             "change introduced this bug. Pick another fix.")
+    base = git(b.repo, "rev-parse", "--verify", "-q", intro + "^", check=False).strip()
+    if not base:
+        fail("The fixed lines are from the project's first commit, which has no change to review.")
+    added = {(q, n) for q, n in spots}
+    touched = set(git(b.repo, "diff", "--name-only", "--no-renames", base, intro).splitlines())
+    added = {(q, n) for q, n in added if q in touched}
+    if not added:
+        fail("The change that wrote these lines does not show them as changed. Pick another fix.")
+    key = []
+    for q in sorted({q for q, _ in added}):
+        nums = sorted(n for f, n in added if f == q)
+        start = prev = nums[0]
+        for n in nums[1:] + [None]:
+            if n is None or n > prev + NEAR:
+                key.append({"file": q, "line": start, "end": prev})
+                start = n
+            prev = n if n is not None else prev
+    stat = git(b.repo, "diff", "--shortstat", base, intro).strip()
+    size = sum(int(n) for n in re.findall(r"(\d+) (?:insertion|deletion)", stat))
+    if size > args.max_lines:
+        fail(f"The change that introduced this bug is {size} lines, too large for one review "
+             f"(limit {args.max_lines}). Pick another fix.")
+    task = {"id": args.id, "kind": "review", "base": base, "reference": intro, "source": "fixed",
+            "prompt": args.prompt or REVIEW_PROMPT,
+            "plant": {"kind": "fixed", "fix": fix, "spots": key,
+                      "file": key[0]["file"], "line": key[0]["line"], "end": key[0]["end"]}}
     save_task(b, task)
-    out({"added": task["id"], **task["plant"], "tried": len(tried) or 1})
+    out({"added": task["id"], "introduced_by": intro[:12],
+         "introducing_change": git(b.repo, "log", "-1", "--format=%s", intro).strip()[:200],
+         "size": stat, "fixed_by": git(b.repo, "log", "-1", "--format=%s", fix).strip()[:200],
+         "where": key, "share_of_fixed_lines": f"{len(spots)} of {total}",
+         "note": "Read the fix and the introducing change: keep the task only if the code was "
+                 "already wrong when that change was made, and the fix is not a change of mind."})
 
 
 def changed_files(b: Barton, base: str, reference: str) -> dict[str, bytes | None]:
@@ -907,8 +984,12 @@ def changed_files(b: Barton, base: str, reference: str) -> dict[str, bytes | Non
 
 
 def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
+    """The change a reviewer gets."""
     files = changed_files(b, task["base"], task["reference"])
     pl = task["plant"]
+    if pl.get("kind") == "fixed":
+        return files  # the change as it was made, bug and tests included
+    # A task from before real bugs: one flipped operator on one line of a commit.
     lines = files[pl["file"]].decode("utf-8", "replace").split("\n")
     old = lines[pl["line"] - 1]
     indent = old[: len(old) - len(old.lstrip())]
@@ -917,13 +998,27 @@ def review_files(b: Barton, task: dict) -> dict[str, bytes | None]:
     return files
 
 
+def review_message(b: Barton, task: dict) -> str:
+    """What the reviewed commit says about itself: the author's own message, since a
+    reviewer judges a change against what it set out to do."""
+    if task["plant"].get("kind") == "fixed":
+        return git(b.repo, "log", "-1", "--format=%B", task["reference"]).strip() or "change"
+    return "change under review"
+
+
 # ---------------------------------------------------------------- run
 
 WRITE_RULES = ("\n\nWork only in the current folder. Make the change in the code; "
                "add or update tests if the project has them. You may run the project's "
                "commands. Do not use the internet. When you are done, stop.")
-REVIEW_RULES = ("\n\nDo not change any files. Report only bugs you are confident about. "
-                "Do not use the internet. End your reply with the bugs as a JSON code block: "
+# A review is done by reading, inside the task folder only. Elsewhere on the computer
+# lies the project as it is today, with the answer in it, and running the project's
+# tests or type checker is not reviewing.
+CHANGE_FILE = "CHANGE_UNDER_REVIEW.diff"
+REVIEW_RULES = ("\n\nReview by reading. Everything you need is in the current folder: do not "
+                "read anything outside it, do not run the project's code, tests or tools, do "
+                "not use the internet, and do not change any files. Report only bugs you are "
+                "confident about. End your reply with the bugs as a JSON code block: "
                 "```json followed by a list with one object per bug, "
                 '{"file": "<path>", "line": <line number in the current file>, '
                 '"problem": "<one sentence>"}, or [] if you found none.')
@@ -934,6 +1029,30 @@ REVIEW_RULES = ("\n\nDo not change any files. Report only bugs you are confident
 AGY_WEB = re.compile(r"^(search_web|read_url\w*|browser_\w+)$")
 
 
+def outside_reads(b: Barton, folder: Path, u: dict) -> list[str]:
+    """What a review read outside its task folder. Elsewhere on the computer lies the
+    project as it is today, with the answer in it, and not every CLI can be kept from
+    reading it, so a run that did is found afterwards and not scored.
+
+    agy names the path of every file its tools open. codex reads through shell commands,
+    which are text: there, a command that names the project's own folder."""
+    inside = str(folder.resolve()).lower() + os.sep
+    went = [p for p in u.get("paths", [])
+            if not (str(Path(p).resolve()).lower() + os.sep).startswith(inside)]
+    repo = b.repo.resolve()
+    needles = {repo.as_posix().lower()}
+    try:
+        rel = repo.relative_to(Path.home().resolve())
+        if len(rel.parts) >= 2:  # also `Join-Path $HOME 'code/app'` and `~/code/app`
+            needles.add(rel.as_posix().lower())
+    except ValueError:
+        pass
+    flat = lambda c: re.sub(r"[\\/]+", "/", c).lower()
+    # The folder itself or something in it, not a neighbour whose name starts alike.
+    named = [re.compile(re.escape(n) + r"(?![\w.-])") for n in needles]
+    return went + [c for c in u.get("commands", []) if any(r.search(flat(c)) for r in named)]
+
+
 def prompt_on_stdin(harness: str) -> bool:
     """agy reads its prompt only from -p; it is a real executable, so the whole prompt
     survives as one argument. The other CLIs are .cmd shims on Windows."""
@@ -941,14 +1060,21 @@ def prompt_on_stdin(harness: str) -> bool:
 
 
 def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prompt: str = "",
-                sandbox: bool = True):
+                sandbox: bool = True, review: bool = False):
     """The CLI command; for claude and codex the prompt goes on stdin, because Windows
-    .cmd shims cut an argument at its first line break and drop every argument after it."""
+    .cmd shims cut an argument at its first line break and drop every argument after it.
+
+    A `review` run may only read, and only in its folder, as far as each CLI can hold it
+    to that: claude gets its file-reading tools alone, and reads outside the folder need
+    a permission nobody gives; agy is refused every command and write; codex reads files
+    through shell commands, so it keeps a shell, in a read-only sandbox. agy and, on some
+    systems, codex can still read the rest of the disk: see `outside_reads`."""
     if harness == "claude":
         cmd = resolve_cli("claude") + [
             "-p", "--model", model, "--output-format", "json",
             "--permission-mode", "dontAsk",
-            "--allowedTools", "Read,Edit,Write,Glob,Grep,Bash,TodoWrite",
+            *(["--tools", "Read,Grep,Glob"] if review else
+              ["--allowedTools", "Read,Edit,Write,Glob,Grep,Bash,TodoWrite"]),
             "--disallowedTools", "WebFetch,WebSearch",
             "--setting-sources", "project,local", "--strict-mcp-config",
             "--no-session-persistence"]
@@ -957,7 +1083,8 @@ def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prom
         return cmd
     if harness == "codex":
         cmd = resolve_cli("codex") + [
-            "exec", "-m", model, "-s", "workspace-write" if sandbox else "danger-full-access",
+            "exec", "-m", model,
+            "-s", "danger-full-access" if not sandbox else "read-only" if review else "workspace-write",
             "-C", str(folder), "--skip-git-repo-check", "--json", "--ephemeral", "--ignore-user-config",
             "-c", 'web_search="disabled"',
             # The project's instruction files whole, as Claude reads them; codex's default
@@ -978,8 +1105,15 @@ def harness_cmd(harness: str, model: str, effort: str | None, folder: Path, prom
         # model ids carry the thinking level (gemini-4-argon-medium); Barton records model
         # and level apart, as for the other CLIs, and joins them here.
         slug = model if not effort or model.endswith("-" + effort) else f"{model}-{effort}"
-        return exe + ["-p", prompt, "--model", slug, "--output-format", "stream-json",
-                      "--dangerously-skip-permissions", "--disable-slash-commands"]
+        cmd = exe + ["-p", prompt, "--model", slug, "--output-format", "stream-json",
+                     "--disable-slash-commands"]
+        if review:
+            # Deny rules hold in every mode. agy's strict mode would also refuse reads
+            # outside the folder, but in print mode it refused reads inside it at random,
+            # so those are found afterwards from the paths its tools were given.
+            return cmd + ["--settings", json.dumps({"permissions": {"deny": [
+                "command(*)", "write_file(*)", "read_url(*)", "execute_url(*)", "mcp(*)"]}})]
+        return cmd + ["--dangerously-skip-permissions"]
     fail(f"Unknown harness '{harness}'. Use 'claude', 'codex' or 'agy'.")
 
 
@@ -1023,6 +1157,7 @@ def parse_usage(harness: str, stdout: str) -> dict:
             it = ev.get("item") or {}
             if it.get("type") == "command_execution" and it.get("exit_code") is not None:
                 u["commands_ran"] = u.get("commands_ran", 0) + 1
+                u.setdefault("commands", []).append(str(it.get("command") or ""))
             elif it.get("type") == "agent_message":
                 u["final"] = (u.get("final", "") + "\n\n" + str(it.get("text") or "")).strip()
     if not saw_turn:  # a completed turn after a transient error is a real run
@@ -1047,6 +1182,9 @@ def parse_agy(stdout: str, u: dict) -> dict:
                 continue
             name = str(st.get("tool_name") or "")
             if st.get("state") == "DONE":
+                params = (st.get("tool_info") or {}).get("parameters") or {}
+                u.setdefault("paths", []).extend(
+                    v for v in params.values() if isinstance(v, str) and os.path.isabs(v))
                 tools += 1
                 web += bool(AGY_WEB.match(name))
             else:  # a refused or failed tool call
@@ -1091,13 +1229,16 @@ def cmd_run(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     if args.tasks == ["all"]:
-        ids = [t["id"] for t in cfg.get("tasks", []) if not t.get("excluded")]
+        ids = [t["id"] for t in cfg.get("tasks", []) if not t.get("excluded")
+               and (CODING_TASKS or t["kind"] == "review")]
     elif args.tasks == ["quick"]:
         ids = cfg.get("quick") or fail("No quick set yet. Run `barton quick` first.")
         ids = [i for i in ids if not b.task(i).get("excluded")]
     else:
         ids = args.tasks
     tasks = [b.task(i) for i in dict.fromkeys(ids)]
+    if not CODING_TASKS and any(t["kind"] == "write" for t in tasks):
+        fail(COMING_SOON)
     recorded = b.results()
     todo = []
     for task in tasks:
@@ -1147,7 +1288,9 @@ def run_one(b: Barton, task: dict, args) -> dict:
     if task["kind"] == "review":
         FOLDERS.add(WORK_ROOT / folder_name)
         folder = make_folder(b, task["base"], folder_name, review_files(b, task),
-                             "change under review")
+                             review_message(b, task))
+        # The change as a file: a review may not run commands, git included.
+        (folder / CHANGE_FILE).write_text(git(folder, "show", "--format=%B", "HEAD"), encoding="utf-8")
         prompt = task["prompt"] + REVIEW_RULES
     else:
         FOLDERS.add(WORK_ROOT / folder_name)
@@ -1155,8 +1298,9 @@ def run_one(b: Barton, task: dict, args) -> dict:
         prompt = task["prompt"] + WRITE_RULES
     try:
         start_head = git(folder, "rev-parse", "HEAD").strip()  # the model may commit on its own
+        review = task["kind"] == "review"
         cmd = harness_cmd(args.harness, args.model, args.effort, folder, prompt,
-                          sandbox=b.config().get("codex_sandbox", True))
+                          sandbox=b.config().get("codex_sandbox", True), review=review)
         # A Python that crashes while the model works prints where, instead of dying silently.
         code, so, se, secs, to = run_cmd(cmd, folder, args.timeout, env={"PYTHONFAULTHANDLER": "1"},
                                          stdin_text=prompt if prompt_on_stdin(args.harness) else None)
@@ -1170,6 +1314,11 @@ def run_one(b: Barton, task: dict, args) -> dict:
                     "throwaway copy; `barton config --codex-sandbox off` runs codex without it.")
             elif "blocked by policy" in se:
                 u["error"] = u["error"] or "the sandbox blocked every command the model tried"
+        if review and not u["error"]:
+            went = outside_reads(b, folder, u)
+            if went:
+                u["error"] = ("the model read outside its task folder, where the project as "
+                              "it is today holds the answer: " + went[0][:200])
         if args.harness == "agy" and u.get("tool_denials") and not u.get("commands_ran"):
             # Headless agy refuses tools it may not use and still exits 0.
             u["error"] = u["error"] or "agy refused every tool call: " + "; ".join(u["tool_denials"][:3])
@@ -1265,6 +1414,9 @@ def grade_review(task: dict, folder: Path, run_dir: Path, final: str = "") -> di
     (run_dir / "review.json").write_text(json.dumps(findings, indent=2, ensure_ascii=False),
                                          encoding="utf-8")
     pl = task["plant"]
+    real = pl.get("kind") == "fixed"
+    spots = pl.get("spots") or [{"file": pl["file"], "line": pl["line"] - 3, "end": pl["line"] + 3}]
+    margin = 5 if real else 0
     hit = False
     for f in findings:
         if not isinstance(f, dict):
@@ -1274,11 +1426,16 @@ def grade_review(task: dict, folder: Path, run_dir: Path, final: str = "") -> di
             ln = int(f.get("line", 0))
         except (TypeError, ValueError):
             ln = 0
-        if fp and (fp.endswith(pl["file"]) or pl["file"].endswith(fp)):
-            if abs(ln - pl["line"]) <= 3:
-                hit = True
-                f["planted"] = True
+        if fp and any((fp.endswith(sp["file"]) or sp["file"].endswith(fp))
+                      and sp["line"] - margin <= ln <= sp["end"] + margin for sp in spots):
+            hit = True
+            f["planted"] = True
     other = sum(1 for f in findings if isinstance(f, dict) and not f.get("planted"))
+    if real and findings:
+        # A real bug's place is where its fix landed, and a review with several findings
+        # often has one near there about something else: only the judge can say.
+        return {"outcome": "pending", "method": "judge", "findings": len(findings),
+                "other_findings": other, "at_the_place": hit}
     return {"outcome": "found" if hit else "missed", "findings": len(findings),
             "other_findings": other}
 
@@ -1310,11 +1467,22 @@ def cmd_blind(args) -> None:
     labels = {}
     if task["kind"] == "review":
         pl = task["plant"]
-        parts = ["# Review task\n\nSeveral reviewers looked at the same commit. One bug was "
-                 "planted in it on purpose. For each review, decide only whether it identifies "
-                 "this planted bug (the right place and the right problem, in any words).\n",
-                 f"# The planted bug (answer key)\n\nFile `{pl['file']}`, line {pl['line']}: "
-                 f"`{pl['before']}` was changed to `{pl['after']}`.\n"]
+        if pl.get("kind") == "fixed":
+            fix = git(b.repo, "show", "--format=%B", pl["fix"])
+            places = ", ".join(f"`{s_['file']}` lines {s_['line']}-{s_['end']}" for s_ in pl["spots"])
+            parts = ["# Review task\n\nSeveral reviewers looked at the same change. It held a bug "
+                     "that the project found and fixed later. For each review, decide only "
+                     "whether it identifies this bug: the wrong behaviour the later fix "
+                     "corrects, named at the place of the bug or where it shows, in any words. "
+                     "A finding about something else does not count.\n",
+                     f"# The bug (answer key)\n\nIn the reviewed change: {places}. The later fix, "
+                     f"its message and then its diff:\n\n```diff\n{clipped(fix)}\n```\n"]
+        else:
+            parts = ["# Review task\n\nSeveral reviewers looked at the same commit. One bug was "
+                     "planted in it on purpose. For each review, decide only whether it identifies "
+                     "this planted bug (the right place and the right problem, in any words).\n",
+                     f"# The planted bug (answer key)\n\nFile `{pl['file']}`, line {pl['line']}: "
+                     f"`{pl['before']}` was changed to `{pl['after']}`.\n"]
     else:
         parts = [f"# Task\n\n{task['prompt']}\n"]
         if task.get("reference"):
@@ -1573,6 +1741,8 @@ def cmd_report(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     ids = set(cfg.get("quick") or []) if args.quick else {t["id"] for t in cfg.get("tasks", [])}
+    if not CODING_TASKS:
+        ids -= {t["id"] for t in cfg.get("tasks", []) if t["kind"] == "write"}
     if args.quick and not ids:
         fail("No quick set yet. Run `barton quick` first.")
     excluded = [{"id": t["id"], "reason": t["excluded"]} for t in cfg.get("tasks", [])
@@ -1629,7 +1799,7 @@ def cmd_quick(args) -> None:
     cfg = b.config()
     rows = [r for r in current_rows(b) if r["outcome"] not in ("error", "pending")]
     chosen = []
-    for kind, want in (("write", args.coding), ("review", args.reviews)):
+    for kind, want in ((("write", args.coding),) if CODING_TASKS else ()) + (("review", args.reviews),):
         scored = []
         for t in cfg.get("tasks", []):
             if t["kind"] != kind or (kind == "write" and not t.get("check")) or t.get("excluded"):
@@ -1664,6 +1834,8 @@ def task_age(cfg: dict, rows: list[dict]) -> dict:
 
 def cmd_clean(args) -> None:
     """Remove task folders left by killed or --keep runs, and the prepared folders."""
+    if others_working():
+        fail("A Barton run is still going and uses these folders. Clean when it has finished.")
     for root in (WORK_ROOT, template_root()):
         if root.exists():
             for d in root.iterdir():
@@ -1717,15 +1889,11 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("task")
     sp = p("validate", cmd_validate, "check fails before and passes after the change")
     sp.add_argument("task")
-    sp = p("plant", cmd_plant, "make a review task with a planted bug")
+    sp = p("bug", cmd_bug, "make a review task from a real bug: the change a later fix corrected")
     sp.add_argument("id")
-    sp.add_argument("commit")
-    sp.add_argument("--seed", type=int)
+    sp.add_argument("fix", help="the commit that fixed the bug")
+    sp.add_argument("--max-lines", type=int, default=1500, help="largest introducing change to review")
     sp.add_argument("--prompt")
-    sp.add_argument("--check", help="test command; keep only a planted bug it catches")
-    sp.add_argument("--env", action="append", metavar="NAME=VALUE",
-                    help="environment for --check, such as PYTHONPATH=src (repeatable)")
-    sp.add_argument("--tries", type=int, default=12)
     sp = p("run", cmd_run, "run one model on tasks, several at once, and record each")
     sp.add_argument("tasks", nargs="+", help="task ids, all, or quick")
     sp.add_argument("--jobs", type=int, default=JOBS, help="runs at the same time")
@@ -1740,7 +1908,7 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--keep", action="store_true", help="keep the task folder afterwards")
     sp = p("quick", cmd_quick, "choose the quick set: a few fast tasks that told models apart")
     sp.add_argument("--coding", type=int, default=8)
-    sp.add_argument("--reviews", type=int, default=4)
+    sp.add_argument("--reviews", type=int, default=6)
     sp = p("blind", cmd_blind, "anonymous bundle of solutions waiting for judgment")
     sp.add_argument("task")
     sp = p("verdict", cmd_verdict, "record a blind verdict")
@@ -1772,7 +1940,11 @@ def main(argv: list[str] | None = None) -> None:
     if threading.current_thread() is threading.main_thread():
         before = {sig: signal.signal(sig, stop_everything) for sig in sigs}
     try:
-        args.fn(args)
+        if args.cmd in ("run", "validate"):
+            with working():
+                args.fn(args)
+        else:
+            args.fn(args)
     finally:
         for sig, handler in before.items():
             signal.signal(sig, handler)

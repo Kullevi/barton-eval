@@ -54,6 +54,8 @@ a:hover { text-decoration:underline; }
 .who .detail { display:block; padding-left:16px; }
 .track { display:flex; height:14px; border-radius:7px; background:var(--track); overflow:hidden; }
 .side .track { height:10px; border-radius:5px; }
+.bars { min-width:0; }
+.smallbar { display:block; height:4px; min-width:0; border-radius:2px; margin-top:4px; opacity:.35; }
 .val { text-align:right; font-size:20px; font-weight:650; white-space:nowrap; }
 .side .val { font-size:14px; }
 .val small { display:block; font-size:12px; font-weight:400; color:var(--muted); }
@@ -214,8 +216,11 @@ function scoreSpec(kind, color) {
       name: s.model, tag: s.tag, detail: s.detail, color: color(s.key),
       segs: Array.from({ length: s.n }, (_, i) => i < s.hits ? "w" : "l"),
       // A reviewer that raises many alarms finds more by raising more: the count stands beside the score.
+      // Small findings get their own thin bar, one unit per finding like the bugs above
+      // it, squeezed only when some model raised more small findings than there are bugs.
+      small: write ? null : s.small, smallOf: Math.max(s.n, ...list.map(k => k.small || 0)),
       value: `${s.hits} / ${s.n}`, note: [write ? "" : `${(s.findings / (s.reviews || 1)).toFixed(1)} findings per review`,
-        write || s.small == null ? "" : `${s.small} small, not counted`,
+        write || s.small == null ? "" : `${s.small} small`,
         fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
     })),
   };
@@ -338,7 +343,12 @@ function drawRows(x, T, s, rows, box, large) {
     if (two) x.fillText(ellipsize(x, r.detail, labelW - 28 * s), box.x + 18 * s, mid + 17 * s);
     else if (tagW) x.fillText(r.tag, box.x + 18 * s + nameW + 6 * s, ny);
     const bh = Math.min((large ? 14 : 10) * s, rowH * .36);
-    drawBlocks(x, T, r.segs, colour, barX, mid - bh / 2, barW, bh);
+    const thin = r.small != null && rowH >= 30 * s, by = mid - bh / 2 - (thin ? 6 * s : 0);
+    drawBlocks(x, T, r.segs, colour, barX, by, barW, bh);
+    if (thin && r.small) {
+      x.save(); x.globalAlpha = .35; x.fillStyle = colour;
+      roundRect(x, barX, by + bh + 3 * s, barW * r.small / r.smallOf, 4 * s, 2 * s); x.fill(); x.restore();
+    }
     x.textAlign = "right";
     setFont(x, valueSize, 650); x.fillStyle = T.text;
     x.fillText(r.value, box.x + box.w, two ? mid - 1 * s : mid + valueSize * .35);
@@ -365,7 +375,8 @@ const noteOf = p => p.key === "write-quality" ? plural(p.n, "comparison") + (p.c
   : p.easy ? "too easy to tell apart"
   : `${plural(p.n, p.key.startsWith("write") ? "task" : "bug")}${p.runs === 1 ? "" : ` · ${p.runs} runs each`}`
     + (p.key.endsWith("-score") && p.rows.length > 1 && apartCount(p.key.split("-")[0]) ? ` · ${apartCount(p.key.split("-")[0])} told apart` : "")
-    + (p.close ? " · too close to call" : "");
+    + (p.close ? " · too close to call" : "")
+    + (p.rows.some(r => r.small != null) ? " · thin bars: small findings, not scored" : "");
 
 // What the page answers and how, above the results: the point is that the test
 // ran on this codebase, not on a general benchmark.
@@ -487,7 +498,14 @@ function panelEl(p, large, T) {
     }
     const val = el("div", "val", r.value);
     if (large && r.note) val.append(el("small", "", r.note));
-    row.append(who, bar, val); rows.append(row);
+    const bars = el("div", "bars"); bars.append(bar);
+    if (r.small != null) {
+      const thin = el("i", "smallbar");
+      thin.style.width = `${100 * r.small / r.smallOf}%`; thin.style.background = colour;
+      thin.title = `${r.small} real but small findings, not counted in the score`;
+      bars.append(thin);
+    }
+    row.append(who, bars, val); rows.append(row);
   }
   box.append(head, rows);
   return box;

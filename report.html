@@ -572,12 +572,17 @@ function render() {
 // In an app window the page sets the window's height to its content, up to the
 // screen: once at the start and again when the task table opens or closes.
 const appWindow = new URLSearchParams(location.search).get("app") === "1";
+let userResizing = false;
 function fitWindow() {
-  if (!appWindow) return;
-  // The body's own height: the document's is never less than the window's.
-  const want = Math.ceil(document.body.getBoundingClientRect().height) + outerHeight - innerHeight;
-  const height = Math.min(want, screen.availHeight);
-  if (Math.abs(height - outerHeight) > 2) { try { resizeTo(outerWidth, height); } catch (e) { /* a normal tab cannot be resized */ } }
+  // Never while the user drags the window: setting the size then fights the drag.
+  if (!appWindow || userResizing) return;
+  // The window's own size is in screen units and the page's in zoomed units, so the
+  // page's height is scaled by the zoom, and only the height is changed: the width is
+  // the user's.
+  const zoom = Math.min(5, Math.max(.25, outerWidth / (innerWidth || outerWidth)));
+  const want = Math.ceil(document.body.getBoundingClientRect().height * zoom) + outerHeight - innerHeight * zoom;
+  const delta = Math.round(Math.min(want, screen.availHeight) - outerHeight);
+  if (Math.abs(delta) > 2) { try { resizeBy(0, delta); } catch (e) { /* a normal tab cannot be resized */ } }
 }
 
 // The image to share: a 1200 x 600 card at twice that resolution.
@@ -675,7 +680,10 @@ $("copy").addEventListener("click", async () => {
 $("save").addEventListener("click", () => shareImage(save));
 for (const d of document.querySelectorAll("details.below")) d.addEventListener("toggle", fitWindow);
 let resizeTimer;
-addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 60); });
+addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { userResizing = true; try { render(); } finally { userResizing = false; } }, 60);
+});
 render();
 </script>
 </body>

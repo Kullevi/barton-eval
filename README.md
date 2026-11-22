@@ -7,7 +7,7 @@ one. Did it find the bug? A model's whole run takes minutes, and you get a card
 you can share: how many of your own bugs each model found, and what it took in
 time and money.
 
-![The Barton results page from a real run on the open-source click library: GPT-6.2 Sol at two effort levels, Claude Opus 5.5 and Claude Haiku 5.5 reviewing 11 changes that each held a real bug](docs/report.png)
+![The Barton results page from a real run on the open-source click library: GPT-6.2 Sol at two effort levels, Claude Opus 5.5 and Claude Haiku 5.5 reviewing 11 changes that held 21 serious bugs](docs/report.png)
 
 **To get started, give the link to this page to Claude or Codex and ask it to
 set up Barton for you.** Then say something like *"test GPT-6.2 Sol on my
@@ -66,11 +66,13 @@ same tasks.
 *The share image from a run on the open-source
 [click](https://github.com/pallets/click) library, in dark mode. Eleven changes
 from click's history each held a bug its maintainers fixed later, from a pager
-file left open in 2014 to a flag value instantiated by mistake in 2025. No
-model found more than six. Six against five can be chance on eleven tasks, so
-the card says "too close to call"; three tasks told the models apart. GPT-6.2
-Sol found the most and also raised the most findings per review, which is why
-that count is on the card.*
+file left open in 2014 to a flag value instantiated by mistake in 2025. The
+reviews also found ten more serious bugs in those changes, each confirmed
+against the code and fixed by click's maintainers in a later commit, so every
+model was judged on all 21. Small issues were not counted. GPT-6.2 Sol found
+the most; the two Sol settings are too close to call, and ten bugs told the
+models apart. Findings per review is on the card because a model that raises
+more also finds more.*
 
 ## Who does what
 
@@ -107,6 +109,12 @@ that count is on the card.*
   folder paths are removed, reviews are labelled A, B, C in random order, and
   each task goes to a fresh judge. Your assistant prefers the other vendor's
   model as judge. A review with no findings is a miss without a judge.
+- **A bug nobody knew about counts too, if it is serious.** A review may find
+  a real bug that is not the one from the history. Your assistant checks every
+  finding against the code, and one that is both real and serious becomes one
+  more bug for that change: every model's review is then judged against it.
+  Small issues are never counted, however many, so a model cannot win by being
+  picky. You also get the list of confirmed bugs still in your code.
 - **A review is done by reading, in a copy.** Each model works in a fresh copy
   of your code as it was at that change, with no later history and no web
   access. It may not run your project, its tests or its tools, and may not
@@ -357,6 +365,7 @@ command prints JSON. Your assistant runs these; you never need to.
 | `task-remove ID` | Remove a task. |
 | `exclude ID --reason TEXT [--undo]` | Leave a faulty task off the card, listed with its reason. |
 | `run ID... \| all --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
+| `findings ID` / `bug-found ID NEW --where FILE:LINE --what TEXT` | Every finding on one change, anonymous, for checking; and a confirmed, serious bug added as one more answer key. |
 | `blind ID` / `verdict ID LABEL found\|missed` | Anonymous bundle of reviews for a blind judge, and its verdict. |
 | `status` | Progress and scores so far. |
 | `report [--no-open]` | Build the results page and open it in a window of its own. Models are compared only on tasks every one of them has run. |

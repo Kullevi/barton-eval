@@ -297,6 +297,43 @@ class RepoTest(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
             barton.main(["bug", "--repo", str(self.repo), "r1", self.fix])  # only adds new code
 
+    def test_a_bug_a_review_found_becomes_one_more_answer_key(self):
+        self._bug_and_fix()
+        call("bug", "--repo", str(self.repo), "r1", "HEAD")
+        b = barton.Barton(self.repo)
+        for model, findings in (("m1", [{"file": "shop.py", "line": 8, "problem": "label has no space check"}]),
+                                ("m2", [])):
+            b.append_result({"run": f"r1-{model}-default-1", "task": "r1", "kind": "review", "model": model,
+                             "harness": "h", "effort": None, "attempt": 1, "seconds": 30, "cost_usd": 0.5,
+                             "outcome": "pending" if findings else "missed", "findings": len(findings)})
+            d = b.dir / "runs" / f"r1-{model}-default-1"
+            d.mkdir(parents=True)
+            (d / "final.txt").write_text(f"review by {model}: {findings}")
+            (d / "review.json").write_text(json.dumps(findings))
+        got = call("findings", "--repo", str(self.repo), "r1")
+        text = Path(got["bundle"]).read_text()
+        self.assertIn("label has no space check", text)
+        self.assertIn("Fix tax being subtracted", text)  # what is already counted
+        self.assertNotIn("m1", text)
+        d = call("bug-found", "--repo", str(self.repo), "r1", "r1b", "--where", "shop.py:8",
+                 "--what", "label() joins the price and the unit wrongly")
+        self.assertEqual(d["reviews_to_judge"], 1)
+        rows = {r["model"]: r for r in barton.current_rows(b) if r["task"] == "r1b"}
+        # The same review answers for the new bug: no findings is a miss, the rest wait for
+        # the judge, and the time and cost are not counted twice.
+        self.assertEqual((rows["m1"]["outcome"], rows["m2"]["outcome"]), ("pending", "missed"))
+        self.assertEqual((rows["m1"]["seconds"], rows["m1"]["cost_usd"], rows["m1"]["review_of"]),
+                         (0, 0, "r1-m1-default-1"))
+        key = Path(call("blind", "--repo", str(self.repo), "r1b")["bundle"]).read_text()
+        self.assertIn("joins the price and the unit wrongly", key)
+        self.assertIn("review by <model>", key)
+        call("verdict", "--repo", str(self.repo), "r1b", "A", "found", "--judge-model", "j", "--note", "n")
+        self.assertEqual({r["model"]: r["outcome"] for r in barton.current_rows(b) if r["task"] == "r1b"},
+                         {"m1": "found", "m2": "missed"})
+        with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+            barton.main(["run", "--repo", str(self.repo), "r1b", "--harness", "claude", "--model", "m3"])
+        self.assertEqual(call("task-remove", "--repo", str(self.repo), "r1")["tasks"], 0)
+
     def test_a_task_from_before_real_bugs_still_runs(self):
         b = barton.Barton(self.repo)
         task = {"id": "old", "kind": "review", "base": self.fix + "^", "reference": self.fix,

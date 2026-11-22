@@ -778,7 +778,8 @@ def cmd_task_remove(args) -> None:
     b = Barton(Path(args.repo))
     cfg = b.config()
     before = len(cfg.get("tasks", []))
-    cfg["tasks"] = [t for t in cfg.get("tasks", []) if t["id"] != args.task]
+    cfg["tasks"] = [t for t in cfg.get("tasks", []) if t["id"] != args.task
+                    and (t.get("plant") or {}).get("of") != args.task]  # its found bugs go with it
     b.save_config(cfg)
     out({"removed": args.task if len(cfg["tasks"]) < before else None, "tasks": len(cfg["tasks"])})
 
@@ -971,6 +972,91 @@ def cmd_bug(args) -> None:
          "where": key, "share_of_fixed_lines": f"{len(spots)} of {total}",
          "note": "Read the fix and the introducing change: keep the task only if the code was "
                  "already wrong when that change was made, and the fix is not a change of mind."})
+
+
+def also_found(b: Barton, task_id: str) -> list[dict]:
+    """The bugs confirmed in the same change after the fact: each its own task, judged
+    from the review a model already wrote of that change."""
+    return [t for t in b.config().get("tasks", []) if (t.get("plant") or {}).get("of") == task_id]
+
+
+def share_review(b: Barton, row: dict) -> None:
+    """One review answers for every known bug in its change. The time and cost stay on
+    the review's own row, so nothing is counted twice."""
+    if row["outcome"] == "error":
+        return
+    for child in also_found(b, row["task"]):
+        new = {k: v for k, v in row.items() if k not in (
+            "judge_model", "judge_note", "at_the_place", "other_findings", "findings", "method")}
+        new.update(task=child["id"], source="found", run=child["id"] + row["run"][len(row["task"]):],
+                   review_of=row["run"], seconds=0, cost_usd=0, at=now(),
+                   tokens={"input": 0, "cached": 0, "output": 0})
+        if row.get("findings"):
+            new.update(outcome="pending", method="judge")
+        else:
+            new["outcome"] = "missed"
+        b.append_result(new)
+
+
+def cmd_findings(args) -> None:
+    """Every finding the reviews of one change made, anonymous and mixed, for a reader who
+    checks which are real bugs nobody knew about."""
+    b = Barton(Path(args.repo))
+    task = b.task(args.task)
+    pl = task.get("plant") or {}
+    if pl.get("kind") != "fixed":
+        fail("Give the task made with `barton bug`; bugs found later hang on that task.")
+    rows = [r for r in current_rows(b) if r["task"] == task["id"] and r["outcome"] != "error"]
+    items = []
+    for r in rows:
+        p = b.dir / "runs" / r["run"] / "review.json"
+        if p.exists():
+            items += [f for f in json.loads(p.read_text(encoding="utf-8")) if isinstance(f, dict)]
+    if not items:
+        fail("No review of this task has findings.")
+    random.Random().shuffle(items)
+    places = ", ".join(f"`{s_['file']}` lines {s_['line']}-{s_['end']}" for s_ in pl["spots"])
+    known = [f"- already known: {places}, fixed later by "
+             f"\"{git(b.repo, 'log', '-1', '--format=%s', pl['fix']).strip()[:200]}\""]
+    known += [f"- already known: {c['plant']['what']}" for c in also_found(b, task["id"])]
+    parts = [f"# Findings on one change\n\nThe change is commit `{task['reference'][:12]}` "
+             f"(its parent is `{task['base'][:12]}`). Several reviewers read it; these are all "
+             "their findings, mixed, and several may describe the same thing.\n",
+             "# Bugs already counted\n\n" + "\n".join(known) + "\n",
+             "# The findings\n\n" + "\n".join(
+                 f"{i}. `{f.get('file', '?')}` line {f.get('line', '?')}: "
+                 f"{anonymize(str(f.get('problem', '')), rows)}" for i, f in enumerate(items, 1)) + "\n"]
+    bundle = b.dir / "blind" / f"{task['id']}.findings.md"
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    bundle.write_text("\n".join(parts), encoding="utf-8")
+    out({"bundle": str(bundle), "findings": len(items), "reviews": len(rows)})
+
+
+def cmd_bug_found(args) -> None:
+    """Add a bug that a review found and a reader confirmed as real and serious. It
+    becomes one more answer key for the same change, and every review of that change,
+    past and coming, is judged against it."""
+    b = Barton(Path(args.repo))
+    parent = b.task(args.task)
+    if (parent.get("plant") or {}).get("kind") != "fixed":
+        fail("Give the task made with `barton bug`; bugs found later hang on that task.")
+    spots = []
+    for w in args.where:
+        m = re.fullmatch(r"(.+):(\d+)(?:-(\d+))?", w)
+        if not m:
+            fail(f"--where is FILE:LINE or FILE:LINE-END, not '{w}'.")
+        spots.append({"file": m[1].replace("\\", "/"), "line": int(m[2]), "end": int(m[3] or m[2])})
+    task = {"id": args.id, "kind": "review", "base": parent["base"], "reference": parent["reference"],
+            "source": "found", "prompt": parent["prompt"],
+            "plant": {"kind": "found", "of": parent["id"], "what": args.what.strip(), "spots": spots,
+                      "file": spots[0]["file"], "line": spots[0]["line"], "end": spots[0]["end"]}}
+    save_task(b, task)
+    rows = [r for r in current_rows(b) if r["task"] == parent["id"]]
+    for r in rows:
+        share_review(b, r)
+    out({"added": task["id"], "same_change_as": parent["id"],
+         "reviews_to_judge": sum(1 for r in rows if r["outcome"] != "error" and r.get("findings")),
+         "next": f"barton blind {task['id']}"})
 
 
 def changed_files(b: Barton, base: str, reference: str) -> dict[str, bytes | None]:
@@ -1237,6 +1323,11 @@ def cmd_run(args) -> None:
     else:
         ids = args.tasks
     tasks = [b.task(i) for i in dict.fromkeys(ids)]
+    if args.tasks in (["all"], ["quick"]):
+        tasks = [t for t in tasks if not (t.get("plant") or {}).get("of")]
+    elif any((t.get("plant") or {}).get("of") for t in tasks):
+        fail("A bug found later has no run of its own: run the task it belongs to, and the "
+             "same review is judged against both.")
     if not CODING_TASKS and any(t["kind"] == "write" for t in tasks):
         fail(COMING_SOON)
     recorded = b.results()
@@ -1379,6 +1470,7 @@ def run_one(b: Barton, task: dict, args) -> dict:
             row["method"] = "planted"
             row.update(grade_review(task, folder, run_dir, u.get("final", "")))
         b.append_result(row)
+        share_review(b, row)
         out({"result": row})
         return row
     finally:
@@ -1484,6 +1576,13 @@ def cmd_blind(args) -> None:
                      "A finding about something else does not count.\n",
                      f"# The bug (answer key)\n\nIn the reviewed change: {places}. The later fix, "
                      f"its message and then its diff:\n\n```diff\n{clipped(fix)}\n```\n"]
+        elif pl.get("kind") == "found":
+            places = ", ".join(f"`{s_['file']}` lines {s_['line']}-{s_['end']}" for s_ in pl["spots"])
+            parts = ["# Review task\n\nSeveral reviewers looked at the same change. It held the "
+                     "bug described below. For each review, decide only whether it identifies "
+                     "this bug: the same wrong behaviour, named at the place of the bug or where "
+                     "it shows, in any words. A finding about something else does not count.\n",
+                     f"# The bug (answer key)\n\nIn the reviewed change: {places}.\n\n{pl['what']}\n"]
         else:
             parts = ["# Review task\n\nSeveral reviewers looked at the same commit. One bug was "
                      "planted in it on purpose. For each review, decide only whether it identifies "
@@ -1500,7 +1599,7 @@ def cmd_blind(args) -> None:
         label = chr(ord("A") + i)
         labels[label] = r["run"]
         if task["kind"] == "review":
-            text = (b.dir / "runs" / r["run"] / "final.txt").read_text(encoding="utf-8")
+            text = (b.dir / "runs" / r.get("review_of", r["run"]) / "final.txt").read_text(encoding="utf-8")
             parts.append(f"# Review {label}\n\n{clipped(anonymize(text, runs))}\n")
         else:
             patch = (b.dir / "runs" / r["run"] / "diff.patch").read_text(encoding="utf-8")
@@ -1901,6 +2000,13 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("fix", help="the commit that fixed the bug")
     sp.add_argument("--max-lines", type=int, default=1500, help="largest introducing change to review")
     sp.add_argument("--prompt")
+    sp = p("findings", cmd_findings, "every finding on one task, anonymous: which are real bugs nobody knew")
+    sp.add_argument("task")
+    sp = p("bug-found", cmd_bug_found, "add a confirmed, serious bug a review found as one more answer key")
+    sp.add_argument("task", help="the task whose change holds the bug")
+    sp.add_argument("id", help="id of the new task")
+    sp.add_argument("--where", action="append", required=True, metavar="FILE:LINE[-END]")
+    sp.add_argument("--what", required=True, help="the wrong behaviour, in a few sentences")
     sp = p("run", cmd_run, "run one model on tasks, several at once, and record each")
     sp.add_argument("tasks", nargs="+", help="task ids, all, or quick")
     sp.add_argument("--jobs", type=int, default=JOBS, help="runs at the same time")

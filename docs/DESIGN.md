@@ -58,7 +58,14 @@ run.
   raise: one model averaged six findings per review where another averaged
   two. With many findings one lands near the fixed lines by chance, so place
   alone is not a find. A blind judge reads each review against the fix. A
-  review with no findings is a miss without a judge. The card shows findings
+  review with no findings is a miss without a judge.
+- **The list of known bugs grows.** A review can find a real bug the history
+  never fixed. Counting only the history's bug would punish the best reviewer;
+  counting every finding would reward the pickiest. So the session checks the
+  findings of a change, and one that is real and serious becomes another task
+  on the same change (`bug-found`), judged for every model from the review it
+  already wrote. Whether a bug is real and serious is a judgment, made by a
+  reader with the code in front of it, not a rule in Barton. The card shows findings
   per review beside the score.
 - **History is required.** A project without git history, or with no fixes in
   it yet, gets no run: the test leader offers to start saving history, and

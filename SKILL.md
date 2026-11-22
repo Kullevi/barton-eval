@@ -220,6 +220,36 @@ verdict:
 
 `barton verdict <task> <label> found|missed --judge-model <judge model> --note "<one sentence>"`
 
+**Bugs nobody knew about.** A review may find a real bug that is not the
+answer key. A model must get credit for that, and every other model must be
+judged on the same bug. For every task, run `barton findings <task>`: it writes
+every finding the reviews of that change made, anonymous and mixed, with the
+bugs already counted. Give each bundle to a fresh helper that may read the
+project and its whole history, and ask it to check each finding against the
+code at that commit and name the ones that are both:
+
+- **real**: it can show from the code how the wrong behaviour happens, with the
+  input or call that triggers it. A later commit that fixed it is strong
+  support. "Could be a problem" is not enough; when in doubt it is not counted.
+- **serious**: in ordinary use of the project it gives a wrong result, loses or
+  corrupts data, crashes, hangs or opens a security hole. Style, naming,
+  documentation, tests, missing checks for input that cannot arrive, and
+  rare corners nobody would hit are small, however real.
+
+Only bugs that are both become answer keys. Small ones are never counted: a
+model must not win by being picky. Several findings about the same bug are one
+bug. Add each with
+
+`barton bug-found <task> <new id> --where <file>:<line>[-<end>] --what "<the wrong behaviour and how it happens>"`
+
+Barton then judges every model's existing review of that change against the new
+bug: no new run, no added time or cost. A review without findings has missed
+it; send the rest through `barton blind <new id>` and `barton verdict` as
+above, with a fresh judge. Hold the bugs from the history to the same bar: if
+a fix turns out to correct something small, exclude that task with the reason.
+Tell the user about the confirmed bugs that are still in today's code: that
+list is worth having on its own.
+
 **A bug no model found.** Before showing the result, read again every task no
 setting found, against the three conditions in step 4. If the task is not a
 fair one after all, take it off the card with

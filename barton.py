@@ -1582,9 +1582,8 @@ def cmd_blind(args) -> None:
     """Write an anonymous bundle of every pending solution to one task."""
     b = Barton(Path(args.repo))
     task = b.task(args.task)
-    pend = [r for r in b.results() if r["task"] == task["id"] and r["outcome"] == "pending"]
-    latest = {r["run"]: r for r in pend}
-    runs = list(latest.values())
+    # Only what still waits: a verdict once given stands, and is not asked for again.
+    runs = [r for r in current_rows(b) if r["task"] == task["id"] and r["outcome"] == "pending"]
     if not runs:
         fail("No solutions are waiting for a blind judgment on this task.")
     random.Random().shuffle(runs)

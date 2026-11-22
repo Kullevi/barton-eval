@@ -566,8 +566,13 @@ function render() {
   $("judges").textContent = judges.length ? ` (${judges.join(", ")})` : "";
   if (!$("pick").open) renderPick();
   renderTable();
-  fitWindow();
+  // While the page is still loading (above all on a reload) the browser does not yet know
+  // the window's own size, and a resize then collapses the window: wait for the load.
+  if (document.readyState === "complete") fitWindow();
 }
+const keepWidth = () => { try { if (outerWidth >= 400) sessionStorage.setItem("barton-width", outerWidth); } catch (e) {} };
+addEventListener("load", () => { keepWidth(); setTimeout(fitWindow, 300); });
+addEventListener("pagehide", keepWidth);
 
 // In an app window the page sets the window's height to its content, up to the
 // screen: once at the start and again when the task table opens or closes.
@@ -581,8 +586,20 @@ function fitWindow() {
   // the user's.
   const zoom = Math.min(5, Math.max(.25, outerWidth / (innerWidth || outerWidth)));
   const want = Math.ceil(document.body.getBoundingClientRect().height * zoom) + outerHeight - innerHeight * zoom;
-  const delta = Math.round(Math.min(want, screen.availHeight) - outerHeight);
-  if (Math.abs(delta) > 2) { try { resizeBy(0, delta); } catch (e) { /* a normal tab cannot be resized */ } }
+  const height = Math.round(Math.min(want, screen.availHeight));
+  // After a reload the browser resizes from a window size it no longer knows and the
+  // window collapses, so the width is said outright: the one last seen in this window.
+  let width = outerWidth;
+  try { width = +sessionStorage.getItem("barton-width") || outerWidth; } catch (e) {}
+  // Never larger than the screen, and never hanging off its lower or right edge.
+  width = Math.min(width, screen.availWidth);
+  const left = screen.availLeft || 0, top = screen.availTop || 0;
+  const x = Math.max(left, Math.min(screenX, left + screen.availWidth - width));
+  const y = Math.max(top, Math.min(screenY, top + screen.availHeight - height));
+  try {
+    if (Math.abs(height - outerHeight) > 2 || width < outerWidth) resizeTo(width, height);
+    if (Math.abs(x - screenX) > 2 || Math.abs(y - screenY) > 2) moveTo(x, y);
+  } catch (e) { /* a normal tab cannot be resized */ }
 }
 
 // The image to share: a 1200 x 600 card at twice that resolution.

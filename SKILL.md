@@ -171,8 +171,23 @@ deleted when the run ends. A review may only read, and only in that copy: the
 project as it is today, elsewhere on the computer, holds the answer. Claude gets
 its file-reading tools alone; agy is refused every command; codex keeps a shell
 in a read-only sandbox, because it reads files through commands. A run that
-read outside its copy is recorded as an `error` saying so, not as a score. Read only the results Barton prints, not the model's
-output files, so your own context stays small. A run already recorded is skipped, so
+plainly read the project's own folder is recorded as an `error` saying so, not
+as a score. Read only the results Barton prints, not the model's output files,
+so your own context stays small.
+
+Barton's own check is narrow on purpose; the rest is yours. For every model
+that had a shell or named its file paths (codex, agy), read what it did before
+you trust its results: each run's `.barton/runs/<run>/actions.txt` lists every
+command it ran or file it opened, one per line. Give the files of one model to
+one helper and ask whether any run went outside its copy (another folder on
+the computer, an installed copy of the project, the home folder), reached the
+network, or started the project's code, tests or tools, and whether that could
+have shown it the answer. Searching and reading inside the copy is the job; a
+stray `git status` gives nothing away. Run a task again with `--again` when
+its run could have seen the answer, and say in your summary what you checked
+and what you found.
+
+A run already recorded is skipped, so
 "continue barton" means: run `barton status` and run what is missing.
 
 An `error` outcome is not a score: it means the run could not happen (login,

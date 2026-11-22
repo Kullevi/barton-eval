@@ -1326,6 +1326,13 @@ def run_one(b: Barton, task: dict, args) -> dict:
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "output.txt").write_text(so[-200000:] + "\n--- stderr ---\n" + se[-20000:],
                                             encoding="utf-8")
+        did = u.get("commands", []) + u.get("paths", [])
+        if did:
+            # What the model ran or opened, one per line, for whoever runs the test to read:
+            # whether a model kept to its copy is a judgment, and `outside_reads` only
+            # catches the plainest case.
+            (run_dir / "actions.txt").write_text(
+                "".join(" ".join(a.split()) + "\n" for a in did), encoding="utf-8")
         row = {"v": 1, "task": task["id"], "kind": task["kind"], "source": task.get("source"),
                "model": args.model, "harness": args.harness, "harness_version": cli_version(args.harness),
                "effort": args.effort, "attempt": attempt, "run": run_id, "at": now(),

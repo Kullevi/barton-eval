@@ -113,8 +113,9 @@ that count is on the card.*
   read outside the copy: your project as it is today is on the same computer
   and holds the answer. Claude Code gets its file-reading tools alone, the
   Antigravity CLI is refused every command, and Codex, which reads files
-  through shell commands, runs in a read-only sandbox. Barton then checks what
-  each model opened, and a run that read outside its copy is not scored.
+  through shell commands, runs in a read-only sandbox. Your assistant then reads
+  what each model ran and opened, and a run that could have seen the answer is
+  not scored.
 - **The limits.** A judge is still a model and can be wrong; fifteen tasks is a
   small sample; a public repository may have been in a model's training data,
   fix included (the card says so); whether a fix shows a bug that was already
@@ -122,7 +123,7 @@ that count is on the card.*
   of each pair, and a task no model found is read again before the result is
   shown; Codex keeps a shell, so it can be told not to run your project's tools
   but not stopped, and on Windows its sandbox cannot keep it from reading other
-  folders, which Barton can only find afterwards; finding a bug is related to
+  folders, which your assistant can only find afterwards; finding a bug is related to
   writing good code but is not the same skill; and the result is the model *in
   that harness* (Claude Code, Codex CLI or Antigravity CLI), which the card
   also says. Running more attempts per setting gives a fairer picture.

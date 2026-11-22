@@ -236,6 +236,10 @@ code at that commit and name the ones that are both:
   documentation, tests, missing checks for input that cannot arrive, and
   rare corners nobody would hit are small, however real.
 
+Ask it for the numbers of the findings that are real but small too, and record
+them for every task with `barton small <task> <numbers>` (no numbers when there
+are none). The page shows that count beside each model, outside the score.
+
 Only bugs that are both become answer keys. Small ones are never counted: a
 model must not win by being picky. Several findings about the same bug are one
 bug. Add each with

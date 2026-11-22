@@ -987,7 +987,7 @@ def share_review(b: Barton, row: dict) -> None:
         return
     for child in also_found(b, row["task"]):
         new = {k: v for k, v in row.items() if k not in (
-            "judge_model", "judge_note", "at_the_place", "other_findings", "findings", "method")}
+            "judge_model", "judge_note", "at_the_place", "other_findings", "findings", "method", "small")}
         new.update(task=child["id"], source="found", run=child["id"] + row["run"][len(row["task"]):],
                    review_of=row["run"], seconds=0, cost_usd=0, at=now(),
                    tokens={"input": 0, "cached": 0, "output": 0})
@@ -1011,7 +1011,8 @@ def cmd_findings(args) -> None:
     for r in rows:
         p = b.dir / "runs" / r["run"] / "review.json"
         if p.exists():
-            items += [f for f in json.loads(p.read_text(encoding="utf-8")) if isinstance(f, dict)]
+            items += [(r["run"], f) for f in json.loads(p.read_text(encoding="utf-8"))
+                      if isinstance(f, dict)]
     if not items:
         fail("No review of this task has findings.")
     random.Random().shuffle(items)
@@ -1025,11 +1026,35 @@ def cmd_findings(args) -> None:
              "# Bugs already counted\n\n" + "\n".join(known) + "\n",
              "# The findings\n\n" + "\n".join(
                  f"{i}. `{f.get('file', '?')}` line {f.get('line', '?')}: "
-                 f"{anonymize(str(f.get('problem', '')), rows)}" for i, f in enumerate(items, 1)) + "\n"]
+                 f"{anonymize(str(f.get('problem', '')), rows)}" for i, (_, f) in enumerate(items, 1)) + "\n"]
     bundle = b.dir / "blind" / f"{task['id']}.findings.md"
     bundle.parent.mkdir(parents=True, exist_ok=True)
     bundle.write_text("\n".join(parts), encoding="utf-8")
+    # Which review each numbered finding came from, for `barton small`.
+    (bundle.parent / f"{task['id']}.findings.runs.json").write_text(
+        json.dumps([run for run, _ in items]), encoding="utf-8")
     out({"bundle": str(bundle), "findings": len(items), "reviews": len(rows)})
+
+
+def cmd_small(args) -> None:
+    """Record which findings in the last `barton findings` bundle a reader confirmed as
+    real but small. They are shown beside each model and never change the score."""
+    b = Barton(Path(args.repo))
+    task = b.task(args.task)
+    key_p = b.dir / "blind" / f"{task['id']}.findings.runs.json"
+    if not key_p.exists():
+        fail("Run `barton findings` for this task first.")
+    key = json.loads(key_p.read_text(encoding="utf-8"))
+    bad = [n for n in args.numbers if not 1 <= n <= len(key)]
+    if bad:
+        fail(f"The bundle has findings 1 to {len(key)}; not {', '.join(map(str, bad))}.")
+    counts: dict[str, int] = {}
+    for n in set(args.numbers):
+        counts[key[n - 1]] = counts.get(key[n - 1], 0) + 1
+    for r in current_rows(b):
+        if r["task"] == task["id"] and r["outcome"] != "error":
+            b.append_result({**r, "small": counts.get(r["run"], 0)})
+    out({"task": task["id"], "small": sum(counts.values()), "by_run": counts})
 
 
 def cmd_bug_found(args) -> None:
@@ -2002,6 +2027,9 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--prompt")
     sp = p("findings", cmd_findings, "every finding on one task, anonymous: which are real bugs nobody knew")
     sp.add_argument("task")
+    sp = p("small", cmd_small, "record which numbered findings were real but small: shown, never scored")
+    sp.add_argument("task")
+    sp.add_argument("numbers", nargs="*", type=int, help="numbers from the findings bundle; none if none")
     sp = p("bug-found", cmd_bug_found, "add a confirmed, serious bug a review found as one more answer key")
     sp.add_argument("task", help="the task whose change holds the bug")
     sp.add_argument("id", help="id of the new task")

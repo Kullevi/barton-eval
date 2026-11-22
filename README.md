@@ -114,7 +114,7 @@ more also finds more.*
   finding against the code, and one that is both real and serious becomes one
   more bug for that change: every model's review is then judged against it.
   Small issues are never counted, however many, so a model cannot win by being
-  picky. You also get the list of confirmed bugs still in your code.
+  picky; the page shows how many each model raised, beside its score. You also get the list of confirmed bugs still in your code.
 - **A review is done by reading, in a copy.** Each model works in a fresh copy
   of your code as it was at that change, with no later history and no web
   access. It may not run your project, its tests or its tools, and may not
@@ -365,6 +365,7 @@ command prints JSON. Your assistant runs these; you never need to.
 | `task-remove ID` | Remove a task. |
 | `exclude ID --reason TEXT [--undo]` | Leave a faulty task off the card, listed with its reason. |
 | `run ID... \| all --harness claude\|codex\|agy --model M [--effort E] [--attempt N] [--jobs N] [--budget MIN] [--again]` | Run one model on tasks, up to 8 at once, each in a clean copy that is deleted afterwards, and record the results. `--budget` starts no new task after that many minutes. |
+| `small ID N...` | Which numbered findings were real but small: shown beside each model, never scored. |
 | `findings ID` / `bug-found ID NEW --where FILE:LINE --what TEXT` | Every finding on one change, anonymous, for checking; and a confirmed, serious bug added as one more answer key. |
 | `blind ID` / `verdict ID LABEL found\|missed` | Anonymous bundle of reviews for a blind judge, and its verdict. |
 | `status` | Progress and scores so far. |

@@ -67,6 +67,10 @@ a:hover { text-decoration:underline; }
 }
 .below { padding:0 var(--edge) 32px; }
 .meta { color:var(--muted); margin:0 0 24px; }
+#how { padding-bottom:8px; }
+.how { margin:0 0 16px; padding-left:20px; max-width:860px; color:var(--muted); }
+.how li { margin:0 0 8px; }
+.how b { color:var(--text); font-weight:650; }
 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:1px; }
 td b { font-weight:650; }
 td .desc { color:var(--muted); display:block; margin-top:2px; }
@@ -95,6 +99,15 @@ td small { display:block; color:var(--muted); }
 <header class="head"><h1 id="headline"></h1><p id="sub"></p></header>
 <main class="grid" id="grid"></main>
 <footer class="credit"><span>Run with Barton-eval · by Kullevi · <a href="https://github.com/Kullevi/barton-eval" target="_blank" rel="noopener">github.com/Kullevi/barton-eval</a></span><span id="proj"></span></footer>
+<details class="below" id="how" open>
+  <summary>How this is measured</summary>
+  <ol class="how">
+    <li><b>The tasks.</b> Each is a real change from this project's history that held a bug, fixed in a later commit. The model reviews the change by reading the code as it was then. It cannot see what came after.</li>
+    <li><b>Found or missed.</b> A separate model judges each review without knowing which model wrote it. A bug is found only when the review names that wrong behaviour.</li>
+    <li><b>Other bugs the reviews found.</b> Every finding is checked against the code. One that is real (the wrong behaviour can be shown from the code) and serious (a wrong result, lost data, a crash, a hang or a security hole in ordinary use) is added as one more bug, and every model is judged on it.</li>
+    <li><b>Small findings.</b> Real but small findings, such as style, documentation, tests and rare corners, are counted beside each model and never change the score. A model cannot win by being picky.</li>
+  </ol>
+</details>
 <details class="below">
   <summary>Task by task</summary>
   <p class="meta" id="left"></p>
@@ -140,7 +153,7 @@ function settings(kind) {
     const effort = r.effort || "default";
     const key = `${r.model}|${r.harness}|${effort}`;
     if (!map.has(key)) map.set(key, { key, model: r.model, harness: r.harness, effort, hits: 0, n: 0, secs: 0, cost: 0,
-      costKnown: true, costEst: false, attempts: new Set(), tasks: new Set(), methods: new Set(), other: 0, findings: 0, reviews: 0 });
+      costKnown: true, costEst: false, attempts: new Set(), tasks: new Set(), methods: new Set(), other: 0, findings: 0, reviews: 0, small: null });
     const s = map.get(key);
     s.n += 1; s.hits += ["solved", "found"].includes(r.outcome) ? 1 : 0;
     s.secs += r.seconds || 0; s.attempts.add(r.attempt); s.tasks.add(r.task); s.methods.add(r.method);
@@ -148,7 +161,7 @@ function settings(kind) {
     if (r.cost_kind === "estimated") s.costEst = true;
     s.other += r.other_findings || 0;
     // A bug found later is judged from the same review: one review, counted once.
-    if (!r.review_of) { s.findings += r.findings || 0; s.reviews += 1; }
+    if (!r.review_of) { s.findings += r.findings || 0; s.reviews += 1; if (r.small != null) s.small = (s.small || 0) + r.small; }
   }
   const list = [...map.values()];
   const efforts = m => new Set(list.filter(s => s.model === m).map(s => s.effort)).size;
@@ -202,6 +215,7 @@ function scoreSpec(kind, color) {
       segs: Array.from({ length: s.n }, (_, i) => i < s.hits ? "w" : "l"),
       // A reviewer that raises many alarms finds more by raising more: the count stands beside the score.
       value: `${s.hits} / ${s.n}`, note: [write ? "" : `${(s.findings / (s.reviews || 1)).toFixed(1)} findings per review`,
+        write || s.small == null ? "" : `${s.small} small, not counted`,
         fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
     })),
   };
@@ -592,7 +606,7 @@ $("copy").addEventListener("click", async () => {
   setTimeout(() => btn.textContent = "Copy image", 2000);
 });
 $("save").addEventListener("click", () => shareImage(save));
-document.querySelector("details.below").addEventListener("toggle", fitWindow);
+for (const d of document.querySelectorAll("details.below")) d.addEventListener("toggle", fitWindow);
 let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 60); });
 render();

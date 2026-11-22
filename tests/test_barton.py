@@ -315,6 +315,9 @@ class RepoTest(unittest.TestCase):
         self.assertIn("label has no space check", text)
         self.assertIn("Fix tax being subtracted", text)  # what is already counted
         self.assertNotIn("m1", text)
+        # A real but small finding is recorded on its review and never on a found bug's row.
+        self.assertEqual(call("small", "--repo", str(self.repo), "r1", "1")["by_run"], {"r1-m1-default-1": 1})
+        self.assertEqual({r["model"]: r["small"] for r in barton.current_rows(b)}, {"m1": 1, "m2": 0})
         d = call("bug-found", "--repo", str(self.repo), "r1", "r1b", "--where", "shop.py:8",
                  "--what", "label() joins the price and the unit wrongly")
         self.assertEqual(d["reviews_to_judge"], 1)
@@ -324,6 +327,7 @@ class RepoTest(unittest.TestCase):
         self.assertEqual((rows["m1"]["outcome"], rows["m2"]["outcome"]), ("pending", "missed"))
         self.assertEqual((rows["m1"]["seconds"], rows["m1"]["cost_usd"], rows["m1"]["review_of"]),
                          (0, 0, "r1-m1-default-1"))
+        self.assertNotIn("small", rows["m1"])
         key = Path(call("blind", "--repo", str(self.repo), "r1b")["bundle"]).read_text()
         self.assertIn("joins the price and the unit wrongly", key)
         self.assertIn("review by <model>", key)

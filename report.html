@@ -240,7 +240,7 @@ function scoreSpec(kind, color) {
       // it, squeezed only when some model raised more small findings than there are bugs.
       small: write ? null : s.small, smallOf: Math.max(s.n, ...list.map(k => k.small || 0)),
       value: `${s.hits} / ${s.n}`, note: [write || s.small != null ? "" : `${(s.findings / (s.reviews || 1)).toFixed(1)} findings per review`,
-        write || s.small == null ? "" : `${plural(s.small, "small finding")}, not scored`,
+        write || s.small == null ? "" : `${plural(s.hits, "serious bug")} and ${plural(s.small, "small finding")}`,
         fmtMin(s.secs / s.runs) + " model time", costText(s)].filter(Boolean).join(" · "),
     })),
   };
